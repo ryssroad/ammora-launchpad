@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { parseEther } from "viem";
 import { giwaSepolia } from "@/lib/chain";
-import { shortAddress } from "@/lib/format";
+import { formatRaw, shortAddress } from "@/lib/format";
 import { useGiwa } from "@/components/giwa-wallet";
 
 export function WalletButton() {
@@ -34,13 +35,14 @@ export function WalletButton() {
   return (
     <div className="flex items-center gap-2">
       {chainId !== giwaSepolia.id ? (
-        <button className="btn btn-gold" onClick={() => void connect()}>
+        <button className="btn btn-gold" onClick={() => { setError(null); void connect().catch((reason: Error) => setError(reason.message)); }}>
           Add GIWA Sepolia
         </button>
       ) : (
-        <span className="pill">{balance ? `${balance} ETH` : "ETH"}</span>
+        <span className="pill">{balance ? `${formatRaw(parseEther(balance), 18, 4)} ETH` : "ETH"}</span>
       )}
-      <button className="btn btn-ghost" onClick={disconnect}>
+      {error ? <p role="alert" className="max-w-56 text-xs text-danger">{error}</p> : null}
+      <button className="btn btn-ghost" title="Disconnect wallet" onClick={disconnect}>
         {shortAddress(address)}
       </button>
     </div>

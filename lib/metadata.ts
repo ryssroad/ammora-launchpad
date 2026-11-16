@@ -1,3 +1,7 @@
+import { safeGlyphImage } from "./glyph";
+
+export const MAX_METADATA_BYTES = 2048;
+
 export type TokenMetadata = {
   name?: string;
   symbol?: string;
@@ -47,7 +51,7 @@ export function readMetadata(uri: string): TokenMetadata | null {
       name: typeof parsed.name === "string" ? parsed.name : undefined,
       symbol: typeof parsed.symbol === "string" ? parsed.symbol : undefined,
       description: typeof parsed.description === "string" ? parsed.description : undefined,
-      image: typeof parsed.image === "string" ? httpsUrl(parsed.image) ?? undefined : undefined,
+      image: typeof parsed.image === "string" ? (httpsUrl(parsed.image) ?? safeGlyphImage(parsed.image)) ?? undefined : undefined,
     };
   } catch {
     return null;
@@ -58,5 +62,9 @@ export function buildMetadataUri(input: { name: string; symbol: string; image?: 
   const doc: Record<string, string> = { name: input.name, symbol: input.symbol };
   if (input.description) doc.description = input.description;
   if (input.image) doc.image = input.image;
-  return `data:application/json;base64,${encodeBase64(JSON.stringify(doc))}`;
+  const uri = `data:application/json;base64,${encodeBase64(JSON.stringify(doc))}`;
+  if (new TextEncoder().encode(uri).length > MAX_METADATA_BYTES) {
+    throw new Error("Your description is too long to save with this glyph. Please shorten it.");
+  }
+  return uri;
 }

@@ -21,6 +21,7 @@ html {
 }
 
 body {
+  isolation: isolate;
   min-height: 100vh;
   color: var(--color-ink);
   background:
@@ -33,6 +34,7 @@ body {
 body::before {
   content: "";
   pointer-events: none;
+  z-index: -1;
   position: fixed;
   inset: auto -80px auto auto;
   top: 88px;
@@ -185,3 +187,9 @@ a:focus-visible {
     place-items: center;
   }
 }
+
+.glyph-picker { display: flex; align-items: center; gap: 18px; padding: 16px; border: 1px solid var(--color-line); border-radius: 20px; background: var(--color-card-2); }
+.field { min-width: 0; }
+.panel { min-width: 0; }
+@media (max-width: 420px) { .btn { padding: 10px 12px; } header.shell { flex-wrap: wrap; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
