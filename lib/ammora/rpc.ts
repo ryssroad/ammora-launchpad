@@ -11,6 +11,7 @@ import {
   type PublicClient,
 } from "viem";
 import { publicChain } from "@/lib/chain";
+import { isGiwaRateLimit } from "./errors";
 
 export const deployment = giwaSepoliaAutoRouteDeployment;
 
@@ -50,16 +51,30 @@ export const publicRpcUrl = rpcUrl;
 let client: PublicClient | null = null;
 let chainCheck: Promise<void> | null = null;
 
+export const giwaRpcTransport: ReturnType<typeof http> = (config) => {
+  const transport = http(publicRpcUrl, {
+    timeout: 12_000,
+    retryCount: 1,
+    retryDelay: 300,
+    batch: { batchSize: 30, wait: 0 },
+  })(config);
+  const request: typeof transport.request = async (args, options) => {
+    try {
+      return await transport.request(args, options);
+    } catch (error) {
+      const isRead = /^eth_(get[A-Z][a-zA-Z]*|call|blockNumber|chainId|estimateGas|feeHistory|gasPrice|maxPriorityFeePerGas)$/.test(args.method);
+      if (!isRead || !isGiwaRateLimit(error)) throw error;
+
+      // GIWA uses -32016, which viem does not retry. Stagger concurrent retries.
+      await new Promise((resolve) => setTimeout(resolve, 1_000 + Math.random() * 400));
+      return transport.request(args, { ...options, retryCount: 0 });
+    }
+  };
+  return { ...transport, request };
+};
+
 export function getClient() {
-  client ??= createPublicClient({
-    chain: giwaChain,
-    transport: http(publicRpcUrl, {
-      timeout: 12_000,
-      retryCount: 1,
-      retryDelay: 300,
-      batch: { batchSize: 30, wait: 0 },
-    }),
-  });
+  client ??= createPublicClient({ chain: giwaChain, transport: giwaRpcTransport });
   return client;
 }
 

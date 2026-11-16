@@ -1,6 +1,17 @@
+export function isGiwaRateLimit(error: unknown): boolean {
+  // Contract and SDK errors may wrap the original JSON-RPC error.
+  for (let depth = 0; depth < 8 && error && typeof error === "object"; depth++) {
+    const item = error as { code?: number; cause?: unknown };
+    if (item.code === -32016) return true;
+    error = item.cause;
+  }
+  return false;
+}
+
 export function publicError(error: unknown) {
   const record = error && typeof error === "object" ? (error as { shortMessage?: string; message?: string }) : null;
   const message = record?.shortMessage || record?.message || "Request failed.";
+  if (isGiwaRateLimit(error)) return "GIWA is handling too many requests. Wait a moment and try again.";
   if (/^RPC Request failed\.?$|timed out|too many requests/i.test(message)) {
     return "GIWA could not answer this request. Wait a moment and try again.";
   }
