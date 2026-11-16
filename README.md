@@ -71,7 +71,7 @@ The default template lets anyone launch, but its partner, LP, and leftover recip
 
 Open the site, connect the owner wallet, and expand **Create my Config**.
 
-1. Preview. The card shows the recipients, economics, simulated Config ID, and `reviewHash`. The server simulates the registration with `eth_call` and checks the wallet has enough ETH for gas.
+1. Preview. Reads use the public GIWA HTTP RPC, not the wallet. Each step has a 20 second limit and the card lists the step in progress. The card shows the recipients, economics, simulated Config ID, and `reviewHash`. The server simulates the registration with `eth_call` and checks the wallet has enough ETH for gas. Retry if a step times out.
 2. Simulate and sign. The wallet switches to GIWA Sepolia, the plan is built again, and MetaMask asks you to send it. A rejected signature sends nothing.
 3. The receipt is parsed with `parseAmmoraV4ConfigCreatedReceipt`. Copy the Config ID. This browser stores it in `localStorage` and uses it for launches immediately. Other visitors still use the server `CONFIG_ID`.
 4. Set `CONFIG_ID` in the Vercel environment to that ID and redeploy. A custom server Config takes priority over the browser value.

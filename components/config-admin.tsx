@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { explorerTx } from "@/lib/chain";
+import { readConfigPlan } from "@/lib/config-plan-client";
 import { localConfigId, saveLocalConfigId } from "@/lib/local-config";
 import { shortAddress } from "@/lib/format";
+import { stepOf } from "@/lib/ammora/timeout";
 import type { ConfigPlan, CreatedConfig } from "@/lib/types";
 import { walletError } from "@/lib/wallet-error";
 import { useGiwa } from "@/components/giwa-wallet";
@@ -16,29 +18,44 @@ export function ConfigAdmin() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [steps, setSteps] = useState<string[]>([]);
+  const requestId = useRef(0);
+
+  function fail(reason: unknown) {
+    const step = stepOf(reason);
+    const message = reason instanceof Error ? reason.message : "Could not preview the Config.";
+    console.error("[Create my Config]", step, reason);
+    setError(`${step}: ${message}`);
+  }
 
   async function preview() {
+    const id = ++requestId.current;
     setError(null);
     setCreated(null);
+    setPlan(null);
+    setSteps([]);
     if (!address) {
       setError("Connect the owner wallet. That address becomes the Config owner and every fee recipient.");
       return;
     }
-    setBusy("Preparing the same unsigned Config plan as npm run create-config…");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 70_000);
+    setBusy("Starting the public GIWA RPC preview…");
     try {
-      const response = await fetch("/api/plan", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "create-config", account: address }),
-      });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "Could not preview the Config.");
-      setPlan(body as ConfigPlan);
+      const next = await readConfigPlan(address, (label) => {
+        if (id !== requestId.current) return;
+        setBusy(label);
+        setSteps((current) => current.includes(label) ? current : [...current, label]);
+      }, controller.signal);
+      if (id !== requestId.current) return;
+      setPlan(next);
     } catch (reason) {
+      if (id !== requestId.current) return;
       setPlan(null);
-      setError(reason instanceof Error ? reason.message : "Could not preview the Config.");
+      fail(reason);
     } finally {
-      setBusy(null);
+      clearTimeout(timer);
+      if (id === requestId.current) setBusy(null);
     }
   }
 
@@ -50,13 +67,12 @@ export function ConfigAdmin() {
       setBusy("Switching to GIWA Sepolia…");
       await ensureGiwaChain();
       setBusy("Simulating the Config registration…");
-      const response = await fetch("/api/plan", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "create-config", account: address }),
-      });
-      const fresh = (await response.json()) as ConfigPlan & { error?: string };
-      if (!response.ok) throw new Error(fresh.error || "Simulation failed.");
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 70_000);
+      const fresh = await readConfigPlan(address, (label) => {
+        setBusy(label);
+        setSteps((current) => current.includes(label) ? current : [...current, label]);
+      }, controller.signal).finally(() => clearTimeout(timer));
       setPlan(fresh);
       if (fresh.reviewHash.toLowerCase() !== plan.reviewHash.toLowerCase()) {
         setError("The plan changed. Review the new summary, then sign.");
@@ -69,11 +85,14 @@ export function ConfigAdmin() {
       setBusy("Waiting for the wallet…");
       const hash = await sendAll([fresh.transaction]);
       setBusy("Reading the Config ID from the receipt…");
+      const receiptController = new AbortController();
+      const receiptTimer = setTimeout(() => receiptController.abort(), 20_000);
       const parsedResponse = await fetch("/api/plan", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "config-receipt", hash, account: address }),
-      });
+        signal: receiptController.signal,
+      }).finally(() => clearTimeout(receiptTimer));
       const parsed = await parsedResponse.json();
       if (!parsedResponse.ok) throw new Error(parsed.error || "The transaction was sent, but the Config ID could not be parsed yet.");
       const createdConfig = parsed as CreatedConfig;
@@ -81,6 +100,7 @@ export function ConfigAdmin() {
       setCreated(createdConfig);
       setPlan(null);
     } catch (reason) {
+      console.error("[Create my Config]", stepOf(reason), reason);
       setError(walletError(reason));
     } finally {
       setBusy(null);
@@ -109,7 +129,7 @@ export function ConfigAdmin() {
           {!address ? <p className="mt-3 text-sm text-clay">Connect a wallet to preview.</p> : null}
           <div className="mt-4 flex flex-wrap gap-2">
             <button className="btn btn-gold" disabled={Boolean(busy) || !address} onClick={() => void preview()}>
-              Preview Config
+              {error ? "Retry" : "Preview Config"}
             </button>
             {plan ? (
               <button className="btn btn-ghost" disabled={Boolean(busy) || !plan.simulation.ok} onClick={() => void sign()}>
@@ -117,7 +137,12 @@ export function ConfigAdmin() {
               </button>
             ) : null}
           </div>
-          {busy ? <p className="mt-3 text-sm text-muted">{busy}</p> : null}
+          {steps.length > 0 ? (
+            <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-muted">
+              {steps.map((label) => <li key={label}>{label}{busy === label ? "…" : ""}</li>)}
+            </ol>
+          ) : null}
+          {busy && !steps.includes(busy) ? <p className="mt-3 text-sm text-muted">{busy}</p> : null}
           {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
           {plan ? (
             <div className="mt-4 rounded-2xl border border-line bg-card-2 px-4 py-3 text-sm leading-6 text-muted">

@@ -6,11 +6,9 @@ import {
 } from "@ammora-protocol/sdk";
 import {
   createPublicClient,
-  custom,
   defineChain,
   http,
   type PublicClient,
-  type Transport,
 } from "viem";
 import { publicChain } from "@/lib/chain";
 
@@ -46,37 +44,17 @@ export const giwaChain = defineChain({
     : undefined,
 });
 
-function pacedHttp(url: string, intervalMs = 70): Transport {
-  let tail: Promise<unknown> = Promise.resolve();
-  let nextStart = 0;
-  return (parameters) => {
-    const base = http(url, { retryCount: 1, timeout: 20_000 })(parameters);
-    return custom({
-      request: (args) => {
-        const result = tail.then(async () => {
-          const wait = Math.max(0, nextStart - Date.now());
-          if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
-          try {
-            return await base.request(args);
-          } finally {
-            nextStart = Date.now() + intervalMs;
-          }
-        });
-        tail = result.then(
-          () => undefined,
-          () => undefined,
-        );
-        return result;
-      },
-    })(parameters);
-  };
-}
+/** Public JSON-RPC. Reads never go through the connected wallet. */
+export const publicRpcUrl = rpcUrl;
 
 let client: PublicClient | null = null;
 let chainCheck: Promise<void> | null = null;
 
 export function getClient() {
-  client ??= createPublicClient({ chain: giwaChain, transport: pacedHttp(rpcUrl) });
+  client ??= createPublicClient({
+    chain: giwaChain,
+    transport: http(publicRpcUrl, { timeout: 12_000, retryCount: 0 }),
+  });
   return client;
 }
 
@@ -84,7 +62,10 @@ export function ensureChain() {
   chainCheck ??= (async () => {
     const id = await getClient().getChainId();
     if (id !== catalogChain.id) throw new Error(`RPC returned chain ${id}, not GIWA Sepolia ${catalogChain.id}.`);
-  })();
+  })().catch((error: unknown) => {
+    chainCheck = null;
+    throw error;
+  });
   return chainCheck;
 }
 
@@ -94,7 +75,10 @@ export function ensureCore(blockNumber: bigint) {
   const key = blockNumber.toString();
   let pending = coreChecks.get(key);
   if (!pending) {
-    pending = verifyAmmoraV4CoreAtBlock(getClient(), v4Core, blockNumber).then(() => undefined);
+    pending = verifyAmmoraV4CoreAtBlock(getClient(), v4Core, blockNumber).then(() => undefined).catch((error: unknown) => {
+      coreChecks.delete(key);
+      throw error;
+    });
     coreChecks.set(key, pending);
     if (coreChecks.size > 8) {
       const oldest = coreChecks.keys().next().value;

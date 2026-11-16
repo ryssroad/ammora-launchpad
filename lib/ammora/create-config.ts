@@ -9,7 +9,8 @@ import { encodeAbiParameters, erc20Abi, formatEther, formatUnits, getAddress, ke
 import type { ConfigPlan } from "@/lib/types";
 import { deriveConfigFromTemplate } from "@/lib/ammora/derive-config";
 import { publicError } from "@/lib/ammora/errors";
-import { deployment, ensureCore, gasCap, getClient, readHead, v4Core } from "@/lib/ammora/rpc";
+import { deployment, ensureCore, gasCap, getClient, publicRpcUrl, readHead, v4Core } from "@/lib/ammora/rpc";
+import { withTimeout } from "@/lib/ammora/timeout";
 
 /** Hash published for template #6 in the Ammora launchpad guide, checked against the live read. */
 export const GUIDE_TEMPLATE_HASH = "0x6048908774397e0691bb0e19f72dabb790eb0d892d6081d3622b39e7f738e667";
@@ -32,15 +33,25 @@ export async function planOwnerConfig(input: {
   saleSupplyRaw?: bigint;
   quoteThresholdRaw?: bigint;
   templateHash?: string;
+  onStep?: (label: string) => void;
 }): Promise<ConfigPlan> {
   const owner = getAddress(input.owner);
   const templateId = input.templateId ?? DEFAULT_TEMPLATE_ID;
   const saleSupply = input.saleSupplyRaw ?? DEFAULT_SALE_SUPPLY_RAW;
   const quoteThreshold = input.quoteThresholdRaw ?? DEFAULT_QUOTE_THRESHOLD_RAW;
-  const { block } = await readHead();
-  await ensureCore(block.number);
+  const step = async <T>(label: string, fn: () => Promise<T>) => {
+    input.onStep?.(label);
+    console.info("[create-config]", label);
+    return withTimeout(label, fn);
+  };
+
+  console.info("[create-config] public RPC", new URL(publicRpcUrl).host);
+  const { block } = await step("Checking the public GIWA Sepolia RPC", () => readHead());
+  const template = await step(`Reading template Config #${templateId.toString()}`, async () => {
+    await ensureCore(block.number);
+    return getAmmoraV4ConfigAtBlock(getClient(), v4Core.configRegistry, templateId, block.number);
+  });
   const client = getClient();
-  const template = await getAmmoraV4ConfigAtBlock(client, v4Core.configRegistry, templateId, block.number);
   if (!template.enabled) throw new Error(`Template Config #${templateId} is disabled.`);
   const expectedHash = input.templateHash?.trim() || (templateId === DEFAULT_TEMPLATE_ID ? GUIDE_TEMPLATE_HASH : "");
   if (expectedHash && template.configHash.toLowerCase() !== expectedHash.toLowerCase()) {
@@ -54,25 +65,25 @@ export async function planOwnerConfig(input: {
     leftoverReceiver: owner,
     liquidityDistribution: { ...derived.config.liquidityDistribution, partner: owner },
   };
-  const quoteDecimals = await client.readContract({
+  const quoteDecimals = await step("Reading the quote token", () => client.readContract({
     address: config.quoteToken,
     abi: erc20Abi,
     functionName: "decimals",
     blockNumber: block.number,
-  });
-  const context = await verifyAmmoraPortableDeploymentAtBlock(client, giwaSepoliaAtomicLaunchDeployment, block.number);
+  }));
+  const context = await step("Verifying the reviewed GIWA deployment", () => verifyAmmoraPortableDeploymentAtBlock(client, giwaSepoliaAtomicLaunchDeployment, block.number));
   const maxFee = await gasCap(block.baseFeePerGas);
   const planner = new AmmoraPortableLifecyclePlanner(context, giwaSepoliaAtomicLaunchTargets);
-  const plan = await planner.planConfigRegistration({
+  const plan = await step("Building the unsigned Config plan", () => planner.planConfigRegistration({
     account: owner,
     configOwner: owner,
     config,
     segments: derived.curve,
     gas: { maxFeePerGasNativeRaw: maxFee, safetyMarginBps: 2000n },
-  });
+  }));
   const value = plan.transaction.value ?? 0n;
   const hash = reviewHash(plan.transaction.to, value, plan.transaction.data);
-  const simulation = await simulate(owner, plan.transaction.to, plan.transaction.data, value, maxFee);
+  const simulation = await step("Simulating the transaction", () => simulate(owner, plan.transaction.to, plan.transaction.data, value, maxFee));
 
   return {
     chainId: deployment.chain.id,

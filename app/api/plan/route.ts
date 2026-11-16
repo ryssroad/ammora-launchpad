@@ -4,9 +4,47 @@ import { planOwnerConfig } from "@/lib/ammora/create-config";
 import { publicError } from "@/lib/ammora/errors";
 import { planLaunch } from "@/lib/ammora/launch";
 import { readCreatedConfig, readReceipt } from "@/lib/ammora/receipts";
+import { stepOf } from "@/lib/ammora/timeout";
 import { planMigration, planTrade } from "@/lib/ammora/trade";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+function configPlanStream(account: string) {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (event: unknown) => {
+        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+      };
+      let step = "Preview Config";
+      try {
+        const plan = await planOwnerConfig({
+          owner: getAddress(account),
+          onStep: (label) => {
+            step = label;
+            send({ type: "step", label });
+          },
+        });
+        send({ type: "result", plan });
+      } catch (error) {
+        const message = publicError(error);
+        const failedStep = stepOf(error) === "Preview Config" ? step : stepOf(error);
+        console.error("[create-config]", failedStep, error);
+        send({ type: "error", step: failedStep, message });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "content-type": "application/x-ndjson; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      "x-accel-buffering": "no",
+    },
+  });
+}
 
 export async function POST(request: Request) {
   try {
@@ -24,7 +62,7 @@ export async function POST(request: Request) {
       }));
     }
     if (action === "create-config") {
-      return NextResponse.json(await planOwnerConfig({ owner: getAddress(String(body.account ?? "")) }));
+      return configPlanStream(String(body.account ?? ""));
     }
     if (action === "config-receipt") {
       return NextResponse.json(await readCreatedConfig(String(body.hash ?? ""), String(body.account ?? "")));
