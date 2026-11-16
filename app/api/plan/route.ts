@@ -79,7 +79,7 @@ export async function POST(request: Request) {
       }));
     }
     if (action === "migrate") {
-      return NextResponse.json(await planMigration(String(body.curve ?? "")));
+      return NextResponse.json(await planMigration(String(body.curve ?? ""), String(body.account ?? "")));
     }
     if (action === "receipt") {
       const kind = body.kind === "swap" || body.kind === "migrate" ? body.kind : "launch";
