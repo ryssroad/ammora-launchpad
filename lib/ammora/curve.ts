@@ -32,7 +32,7 @@ const lookupAbi = [
 
 const statusLabels: Record<number, string> = {
   0: "Not started",
-  1: "Pre-graduation",
+  1: "Trading",
   2: "Ready to migrate",
   3: "Graduated",
 };
@@ -105,6 +105,12 @@ export async function readLaunchCard(
     client.readContract({ address: state.quoteToken, abi: erc20Abi, functionName: "decimals", blockNumber }),
     sdk.getMigrationProgressAtBlock(blockNumber),
   ]);
+  if (!metadataUri) {
+    metadataUri = await client.readContract({
+      address: v4Core.launchFactory, abi: ammoraLaunchFactoryV4Abi,
+      functionName: "creatorMetadataURI", args: [curve], blockNumber,
+    }).catch(() => "");
+  }
   const metadata = readMetadata(metadataUri);
   const canonical = state.canonicalPool === zeroAddress ? null : getAddress(state.canonicalPool);
   const progressBps = state.status === 2 || state.status === 3 ? 10_000 : progress.progressBps;

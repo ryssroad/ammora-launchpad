@@ -3,6 +3,9 @@ import { formatUnits } from "viem";
 export function formatRaw(raw: string | bigint, decimals: number, maxFraction = 6) {
   const text = formatUnits(typeof raw === "bigint" ? raw : BigInt(raw), decimals);
   const [whole, fraction = ""] = text.split(".");
+  // Preserve significant digits for tiny testnet amounts instead of showing zero.
+  const leadingZeros = fraction.match(/^0*/)?.[0].length ?? 0;
+  if (whole === "0" || whole === "-0") maxFraction = Math.max(maxFraction, leadingZeros + 3);
   const trimmed = fraction.slice(0, maxFraction).replace(/0+$/, "");
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   return trimmed ? `${grouped}.${trimmed}` : grouped;

@@ -38,7 +38,7 @@ function assertMetadata(name: string, symbol: string, metadataUri: string) {
   const cleanSymbol = symbol.trim();
   if (cleanName.length < 1 || cleanName.length > 32) throw new Error("Name must be 1–32 characters.");
   if (!/^[A-Za-z0-9]{1,10}$/.test(cleanSymbol)) throw new Error("Ticker must be 1–10 letters or numbers.");
-  if (metadataUri.length < 8 || metadataUri.length > 2048) throw new Error("Metadata URI is missing or too long.");
+  if (metadataUri.length < 8 || new TextEncoder().encode(metadataUri).length > 2048) throw new Error("Metadata URI is missing or too long.");
   if (!metadataUri.startsWith("https://") && !metadataUri.startsWith("data:application/json")) {
     throw new Error("Metadata must be an https URL or a data:application/json URI.");
   }
@@ -126,10 +126,9 @@ export async function planLaunch(input: {
       status: "READY",
       action: "launch",
       summary: [
-        `Create ${meta.name} (${meta.symbol}) on Config #${configId.toString()}.`,
-        `Decimals and the pool-creation fee are read from that Config (${formatUnits(snapshot.config.poolCreationFee, 18)} ETH).`,
+        `Create ${meta.name} (${meta.symbol}).`,
+        `Launch fee: ${formatUnits(snapshot.config.poolCreationFee, 18)} ETH, plus network gas.`,
         "You become the token creator. No first buy is included.",
-        "Predicted addresses are not final until the receipt.",
       ],
       transaction: txJson(plan.transaction),
       approvalTransactions: [],
@@ -173,9 +172,8 @@ export async function planLaunch(input: {
         : [
             `Create ${meta.name} (${meta.symbol}) and buy about ${quote.amountOut} tokens.`,
             `Minimum ${quote.minimumAmountOut} tokens. Spends ${quote.amountIn} ${info.quoteSymbol}, plus ETH for gas.`,
-            `Bound to Config #${configId.toString()} hash ${snapshot.configHash}.`,
-            "Predicted addresses are not final until the receipt.",
-          ],
+            `Launch fee: ${formatUnits(snapshot.config.poolCreationFee, 18)} ETH.`
+              ],
       transaction: txJson(plan.transaction),
       approvalTransactions: [],
       replanAfterApproval: approval,

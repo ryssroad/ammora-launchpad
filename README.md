@@ -31,6 +31,14 @@ Quotes and plans are unsigned. The browser sends them with the connected wallet.
 
 If the Data API is down, the feed falls back to recent `LaunchCreated` logs on the catalog factory and says so on the page.
 
+## Generated on-chain glyphs
+
+The launch form generates a symmetric SVG glyph with a shuffle control. Its complete SVG is embedded as a base64 image in the JSON data URI, passed as both `metadataURI` and `creatorMetadataURI` to the existing Ammora V4 factory. No image host, IPFS service, API key, new contract, or image-generation service is needed. The original launch metadata is included in the factory event; the factory also exposes creator metadata via `creatorMetadataURI(curve)`. Creator metadata can subsequently be changed by its creator, so it is not an immutability guarantee.
+
+The SDK limit remains 2,048 UTF-8 bytes. The client checks the complete encoded JSON size, and the server checks byte length too. Rendering only accepts HTTPS art or the exact inert SVG grammar generated here (no scripts, foreign objects, or external resources). Existing HTTPS images remain supported. Address lookups now read the factory metadata as well as token details.
+
+Transaction reviews are bound to the form, account, network and launch settings. Editing those invalidates the review. Submitted launch hashes are displayed before receipt polling finishes, and an old launch plan cannot be resent after a receipt-read failure. Wallet signing and actual launch/trade receipts still need an end-to-end wallet QA pass.
+
 ## Setup
 
 Node 22 or newer.
@@ -128,6 +136,7 @@ Do not point the domain at a guessed IP. The records above are the ones Vercel d
 
 ```bash
 npm run lint
+npm test
 npm run build
 npm run verify-reads
 ```

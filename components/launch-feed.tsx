@@ -1,5 +1,6 @@
 "use client";
 
+import { isAddress } from "viem";
 import { useEffect, useState } from "react";
 import { formatRaw, progressPercent, statusTone } from "@/lib/format";
 import type { FeedResponse, LaunchCard } from "@/lib/types";
@@ -11,6 +12,7 @@ export function LaunchFeed() {
   const [loading, setLoading] = useState(true);
   const [lookup, setLookup] = useState("");
   const [selected, setSelected] = useState<LaunchCard | null>(null);
+  const [lookingUp, setLookingUp] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
 
   function load() {
@@ -28,17 +30,22 @@ export function LaunchFeed() {
 
   useEffect(() => {
     load();
+    window.addEventListener("launch-created", load);
+    return () => window.removeEventListener("launch-created", load);
   }, []);
 
   async function openAddress() {
     setLookupError(null);
-    const response = await fetch(`/api/launches/${lookup.trim()}`);
-    const body = await response.json();
-    if (!response.ok) {
-      setLookupError(body.error || "That address could not be read.");
-      return;
-    }
-    setSelected(body as LaunchCard);
+    if (!isAddress(lookup.trim())) { setLookupError("Enter a valid token address (0x…)."); return; }
+    setLookingUp(true);
+    try {
+      const response = await fetch(`/api/launches/${lookup.trim()}`);
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "That token could not be found.");
+      setSelected(body as LaunchCard);
+    } catch (reason) {
+      setLookupError(reason instanceof Error ? reason.message : "Could not load this token. Try again.");
+    } finally { setLookingUp(false); }
   }
 
   return (
@@ -53,24 +60,23 @@ export function LaunchFeed() {
         </button>
       </div>
       <p className="mt-2 text-sm leading-6 text-muted">
-        {feed?.source === "data-api"
-          ? "Indexed by the Ammora Data API for GIWA Sepolia."
-          : "On-chain reads from the reviewed launch factory."}
+        Find a token you like. Open it to buy, sell, or follow its progress.
       </p>
-      {feed?.warning ? <p className="mt-3 text-sm text-clay">{feed.warning}</p> : null}
+      {feed?.warning ? <p className="mt-3 text-sm text-clay">Showing recent on-chain launches while the full list is unavailable.</p> : null}
       {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
 
-      <div className="mt-4 flex gap-2">
+      <form className="mt-4 flex gap-2" onSubmit={(event) => { event.preventDefault(); void openAddress(); }}>
         <input
           className="field"
           value={lookup}
-          onChange={(event) => setLookup(event.target.value)}
-          placeholder="Open a token or curve address"
+          onChange={(event) => { setLookup(event.target.value); setLookupError(null); }}
+          aria-label="Token address"
+          placeholder="Paste a token address…"
         />
-        <button className="btn btn-ghost shrink-0" onClick={() => void openAddress()}>
-          Open
+        <button className="btn btn-ghost shrink-0" type="submit" disabled={lookingUp}>
+          {lookingUp ? "Finding…" : "Find"}
         </button>
-      </div>
+      </form>
       {lookupError ? <p className="mt-2 text-sm text-danger">{lookupError}</p> : null}
 
       <div className="mt-5 grid gap-3">
@@ -86,34 +92,34 @@ export function LaunchFeed() {
             onClick={() => setSelected(launch)}
           >
             <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 {launch.image ? (
                   // User-provided token art from arbitrary https hosts.
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={launch.image} alt="" className="h-11 w-11 rounded-full object-cover" />
+                  <img src={launch.image} alt="" className="h-12 w-12 shrink-0 rounded-2xl object-cover" loading="lazy" referrerPolicy="no-referrer" />
                 ) : (
                   <span className="grid h-11 w-11 place-items-center rounded-full bg-paper font-display text-gold">
                     {launch.symbol.slice(0, 1)}
                   </span>
                 )}
-                <div>
-                  <p className="font-medium">{launch.name}</p>
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{launch.name}</p>
                   <p className="text-sm text-muted">{launch.symbol}</p>
                 </div>
               </div>
-              <span className={`pill ${statusTone(launch.status)}`}>{launch.statusLabel}</span>
+              <span className={`pill shrink-0 ${statusTone(launch.status)}`}>{launch.statusLabel}</span>
             </div>
             <div className="mt-3 bar">
               <span style={{ width: `${progressPercent(launch.progressBps)}%` }} />
             </div>
             <p className="mt-2 text-xs text-muted">
-              {progressPercent(launch.progressBps).toFixed(2)}% of the quote threshold ·{" "}
+              {progressPercent(launch.progressBps).toFixed(2)}% to graduation ·{" "}
               {formatRaw(launch.quoteReserve, launch.quoteDecimals, 4)} / {formatRaw(launch.quoteThreshold, launch.quoteDecimals, 4)} {launch.quoteSymbol}
             </p>
           </button>
         ))}
         {feed && feed.launches.length === 0 ? (
-          <p className="text-sm text-muted">No recent launches were readable at the confirmed head.</p>
+          <p className="text-sm text-muted">No recent tokens yet. Yours could be next.</p>
         ) : null}
       </div>
       {selected ? <TokenModal launch={selected} onClose={() => setSelected(null)} /> : null}

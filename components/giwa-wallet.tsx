@@ -32,7 +32,7 @@ type GiwaWallet = {
   connect: () => Promise<void>;
   disconnect: () => void;
   ensureGiwaChain: () => Promise<void>;
-  sendAll: (transactions: TxJson[]) => Promise<Hash>;
+  sendAll: (transactions: TxJson[], onSubmitted?: (hash: Hash) => void) => Promise<Hash>;
   readBalance: (token: Address) => Promise<bigint | null>;
 };
 
@@ -88,8 +88,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
     setAddress(next);
     setChainId(id);
     if (next && id === giwaSepolia.id) {
-      const value = await publicClient.getBalance({ address: next });
-      setBalance(Number(formatEther(value)).toFixed(4));
+      const value = await publicClient.getBalance({ address: next }).catch(() => null);
+      setBalance(value === null ? null : formatEther(value));
     } else {
       setBalance(null);
     }
@@ -99,13 +99,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
     const provider = ethereumProvider();
     setHasProvider(Boolean(provider));
     if (!provider) return;
-    void refresh();
+    void refresh().catch(() => setBalance(null));
     const onAccounts = (...args: unknown[]) => {
       const accounts = args[0] as Address[];
-      void refresh(accounts[0]);
+      void refresh(accounts[0]).catch(() => setBalance(null));
     };
     const onChain = () => {
-      void refresh();
+      void refresh().catch(() => setBalance(null));
     };
     provider.on?.("accountsChanged", onAccounts);
     provider.on?.("chainChanged", onChain);
@@ -158,9 +158,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
           abi: erc20Abi,
           functionName: "balanceOf",
           args: [address],
-        });
+        }).catch(() => null);
       },
-      sendAll: async (transactions: TxJson[]) => {
+      sendAll: async (transactions: TxJson[], onSubmitted) => {
         const provider = ethereumProvider();
         if (!provider || !address) throw new Error("Connect a wallet first.");
         try {
@@ -171,7 +171,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
             transport: custom(provider),
           });
           let hash: Hash | null = null;
-          for (const tx of transactions) {
+          for (const [index, tx] of transactions.entries()) {
+          const accounts = await provider.request({ method: "eth_accounts" }) as Address[];
+          if (accounts[0]?.toLowerCase() !== address.toLowerCase()) throw new Error("Your wallet account changed. Review the transaction again.");
+
             hash = await wallet.sendTransaction({
               account: address,
               chain: giwaSepolia,
@@ -179,6 +182,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
               data: tx.data as Hex,
               value: BigInt(tx.value || "0"),
             });
+            if (index === transactions.length - 1) onSubmitted?.(hash);
             const receipt = await publicClient.waitForTransactionReceipt({
               hash,
               confirmations: 1,
@@ -187,7 +191,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             if (receipt.status !== "success") throw new Error("The transaction reverted.");
           }
           if (!hash) throw new Error("Nothing to send.");
-          await refresh(address);
+          await refresh(address).catch(() => setBalance(null));
           return hash;
         } catch (error) {
           throw new Error(walletError(error));

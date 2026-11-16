@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { buildMetadataUri, httpsUrl } from "@/lib/metadata";
+import { buildMetadataUri } from "@/lib/metadata";
+import { glyphImage, newGlyphSeed } from "@/lib/glyph";
 import { explorerTx } from "@/lib/chain";
 import { formatRaw, shortAddress } from "@/lib/format";
 import { localConfigId } from "@/lib/local-config";
@@ -11,14 +12,13 @@ import { useLaunchConfig } from "@/components/use-launch-config";
 import { useOwnerMode } from "@/components/use-owner";
 
 export function CreateForm() {
-  const { address, sendAll } = useGiwa();
+  const { address, chainId, sendAll, connect } = useGiwa();
   const isOwner = useOwnerMode();
   const { config, error: configError } = useLaunchConfig();
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
-  const [image, setImage] = useState("");
+  const [glyphSeed, setGlyphSeed] = useState(21973);
   const [description, setDescription] = useState("");
-  const [metadataOverride, setMetadataOverride] = useState("");
   const [firstBuy, setFirstBuy] = useState("");
   const [quote, setQuote] = useState<QuoteView | null>(null);
   const [plan, setPlan] = useState<PlanView | null>(null);
@@ -26,7 +26,16 @@ export function CreateForm() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ReceiptView | null>(null);
 
+  const [planKey, setPlanKey] = useState("");
+  const formKey = JSON.stringify([name, symbol, glyphSeed, description, firstBuy, address, chainId, config?.configId]);
+  const currentPlan = planKey === formKey ? plan : null;
+  const image = glyphImage(glyphSeed);
+
+  useEffect(() => { setPlan(null); }, [formKey]);
+  useEffect(() => { setGlyphSeed(newGlyphSeed()); }, []);
   useEffect(() => {
+    const controller = new AbortController();
+    setQuote(null);
     if (!firstBuy.trim() || !config) {
       setQuote(null);
       return;
@@ -34,21 +43,24 @@ export function CreateForm() {
     const handle = setTimeout(() => {
       void fetch("/api/quote", {
         method: "POST",
+        signal: controller.signal,
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ amount: firstBuy, slippageBps: 100, localConfigId: localConfigId() }),
       })
         .then(async (response) => {
           const body = await response.json();
           if (!response.ok) throw new Error(body.error || "Quote failed.");
+          if (controller.signal.aborted) return;
           setQuote(body as QuoteView);
           setError(null);
         })
         .catch((reason: unknown) => {
+          if (controller.signal.aborted) return;
           setQuote(null);
           setError(reason instanceof Error ? reason.message : "Quote failed.");
         });
     }, 400);
-    return () => clearTimeout(handle);
+    return () => { clearTimeout(handle); controller.abort(); };
   }, [firstBuy, config]);
 
   async function prepare() {
@@ -59,19 +71,9 @@ export function CreateForm() {
       setError("Connect a wallet first. The connected account becomes the token creator.");
       return;
     }
-    const imageUrl = image.trim() ? httpsUrl(image) : null;
-    if (image.trim() && !imageUrl) {
-      setError("Image URL must start with https://.");
-      return;
-    }
-    const metadataUri = metadataOverride.trim() || buildMetadataUri({
-      name: name.trim(),
-      symbol: symbol.trim(),
-      image: imageUrl ?? undefined,
-      description: description.trim() || undefined,
-    });
-    setBusy("Preparing an unsigned plan…");
+    setBusy("Checking your launch…");
     try {
+      const metadataUri = buildMetadataUri({ name: name.trim(), symbol: symbol.trim(), image, description: description.trim() || undefined });
       const response = await fetch("/api/plan", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -88,6 +90,7 @@ export function CreateForm() {
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Could not prepare the launch.");
+      setPlanKey(formKey);
       setPlan(body as PlanView);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not prepare the launch.");
@@ -97,11 +100,15 @@ export function CreateForm() {
   }
 
   async function sign() {
-    if (!plan) return;
+    if (!currentPlan) return;
+    const plan = currentPlan;
+    setPlan(null);
     setError(null);
     setBusy(plan.replanAfterApproval ? "Waiting for the approval…" : "Waiting for the wallet…");
     try {
-      const hash = await sendAll([plan.transaction]);
+      const hash = await sendAll([plan.transaction], plan.replanAfterApproval ? undefined : (hash) => {
+        setResult({ hash, token: null, curve: null, configId: null, canonicalPool: null, amountOut: null });
+      });
       if (plan.replanAfterApproval) {
         setPlan(null);
         setBusy("Approval confirmed. Preparing the launch again…");
@@ -120,6 +127,7 @@ export function CreateForm() {
         throw new Error(body.error || "The transaction was sent, but the receipt could not be parsed yet.");
       }
       setResult(body as ReceiptView);
+      window.dispatchEvent(new Event("launch-created"));
       setPlan(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The wallet request failed.");
@@ -133,10 +141,10 @@ export function CreateForm() {
       <p className="text-xs tracking-[0.18em] text-gold uppercase">Create</p>
       <h2 className="mt-2 font-display text-3xl">Launch a token</h2>
       <p className="mt-2 text-sm leading-6 text-muted">
-        Name, ticker, and an image URL are enough. Metadata is stored in the transaction as JSON, so no IPFS key is required.
+        Give your token a name and a glyph. Make it yours, then launch.
       </p>
 
-      {config && !isOwner ? <p className="mt-4 text-xs text-muted">Config #{config.configId}</p> : null}
+      {config && !isOwner ? <p className="mt-4 text-xs text-muted">Launch fee {formatRaw(config.poolCreationFeeWei, 18)} ETH + network gas</p> : null}
       {config && isOwner ? (
         <div className="mt-4 rounded-2xl border border-line bg-card-2 px-4 py-3 text-sm leading-6 text-muted">
           <p>
@@ -165,11 +173,12 @@ export function CreateForm() {
           ) : null}
         </div>
       ) : null}
-      {isOwner && !config ? (
-        <p className="mt-4 text-sm text-danger">{configError || "Reading the live Config…"}</p>
+      {config && !config.enabled ? <p role="alert" className="mt-4 text-sm text-danger">New launches are temporarily paused.</p> : null}
+      {!config ? (
+        <p className="mt-4 text-sm text-danger">{configError || "Loading launch settings…"}</p>
       ) : null}
 
-      <div className="mt-5 grid gap-3">
+      <fieldset disabled={Boolean(busy)} className="mt-5 grid min-w-0 gap-3">
         <label className="grid gap-1 text-sm text-muted">
           Name
           <input className="field" value={name} maxLength={32} onChange={(event) => setName(event.target.value)} placeholder="Moon Sample" />
@@ -178,49 +187,50 @@ export function CreateForm() {
           Ticker
           <input className="field uppercase" value={symbol} maxLength={10} onChange={(event) => setSymbol(event.target.value.toUpperCase())} placeholder="MOON" />
         </label>
-        <label className="grid gap-1 text-sm text-muted">
-          Image URL
-          <input className="field" value={image} onChange={(event) => setImage(event.target.value)} placeholder="https://…" />
-        </label>
+        <div className="glyph-picker">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={image} alt="Your token glyph" width={96} height={96} className="rounded-2xl" />
+          <div>
+            <p className="text-sm font-medium">Your token’s glyph</p>
+            <p className="mt-1 text-xs leading-5 text-muted">Saved with your token on-chain.</p>
+            <button type="button" className="btn btn-ghost mt-2" onClick={() => setGlyphSeed(newGlyphSeed())}>Shuffle glyph</button>
+          </div>
+        </div>
         <label className="grid gap-1 text-sm text-muted">
           Short description
           <input className="field" value={description} maxLength={140} onChange={(event) => setDescription(event.target.value)} placeholder="Optional" />
         </label>
         <label className="grid gap-1 text-sm text-muted">
           First buy ({config?.quoteSymbol ?? "quote token"}, optional)
-          <input className="field" value={firstBuy} onChange={(event) => setFirstBuy(event.target.value)} placeholder="0.0001" inputMode="decimal" />
+          <input className="field" value={firstBuy} onChange={(event) => setFirstBuy(event.target.value)} placeholder="Leave blank to skip" inputMode="decimal" />
         </label>
-        <details className="text-sm text-muted">
-          <summary className="cursor-pointer">Use your own metadata URI</summary>
-          <input className="field mt-2" value={metadataOverride} onChange={(event) => setMetadataOverride(event.target.value)} placeholder="https://… or data:application/json,…" />
-        </details>
-      </div>
+        {firstBuy ? <p className="text-xs leading-5 text-muted">You need {config?.quoteSymbol ?? "WETH"} for this purchase and ETH for gas. Leave blank to launch without buying.</p> : null}
+      </fieldset>
 
       {quote ? (
         <p className="mt-3 text-sm text-clay">
           Estimated first buy: {formatRaw(quote.amountOutRaw, quote.tokenDecimals)} tokens, minimum {formatRaw(quote.minimumAmountOutRaw, quote.tokenDecimals)} at 1% slippage.
         </p>
       ) : null}
-      {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
+      {error ? <p role="alert" className="mt-3 text-sm text-danger">{error}</p> : null}
       {busy ? <p className="mt-3 text-sm text-muted">{busy}</p> : null}
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <button className="btn btn-gold" disabled={Boolean(busy) || !config?.enabled} onClick={() => void prepare()}>
-          Prepare launch
+        <button className="btn btn-gold" disabled={Boolean(busy) || !config?.enabled || Boolean(result)} onClick={() => { if (!address) void connect().catch((reason: Error) => setError(reason.message)); else void prepare(); }}>
+          {address ? "Review launch" : "Connect wallet"}
         </button>
-        {plan ? (
+        {currentPlan ? (
           <button className="btn btn-ghost" disabled={Boolean(busy)} onClick={() => void sign()}>
-            {plan.replanAfterApproval ? "Sign approval" : "Sign and send"}
+            {currentPlan.replanAfterApproval ? "Approve first buy" : "Confirm launch"}
           </button>
         ) : null}
       </div>
 
-      {plan ? (
+      {currentPlan ? (
         <ul className="mt-4 list-disc space-y-1 pl-5 text-sm leading-6 text-muted">
-          {plan.summary.map((line) => (
+          {currentPlan.summary.map((line) => (
             <li key={line}>{line}</li>
           ))}
-          {plan.predictedToken ? <li>Predicted token {shortAddress(plan.predictedToken)}</li> : null}
         </ul>
       ) : null}
 
@@ -229,8 +239,8 @@ export function CreateForm() {
           <a className="text-gold underline" href={explorerTx(result.hash)} target="_blank" rel="noreferrer">
             View transaction
           </a>
-          {result.token ? <p>Token {result.token}</p> : null}
-          {result.curve ? <p>Curve {result.curve}</p> : null}
+          {result.token ? <p className="break-all">Your token is live: {result.token}</p> : <p>Transaction submitted. Check its status before starting another launch.</p>}
+          <button className="btn btn-ghost mt-2" disabled={Boolean(busy)} onClick={() => { setResult(null); setPlan(null); setName(""); setSymbol(""); setDescription(""); setFirstBuy(""); setGlyphSeed(newGlyphSeed()); }}>Create another token</button>
         </div>
       ) : null}
     </section>

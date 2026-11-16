@@ -11,7 +11,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
+    "test": "node --import tsx --test tests/*.test.ts",
     "create-config": "tsx scripts/create-config.ts",
     "verify-reads": "tsx scripts/verify-reads.ts"
   },
