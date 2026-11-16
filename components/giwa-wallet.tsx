@@ -15,6 +15,7 @@ import {
 } from "viem";
 import { giwaSepolia } from "@/lib/chain";
 import type { TxJson } from "@/lib/types";
+import { walletError } from "@/lib/wallet-error";
 
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -30,6 +31,7 @@ type GiwaWallet = {
   hasProvider: boolean;
   connect: () => Promise<void>;
   disconnect: () => void;
+  ensureGiwaChain: () => Promise<void>;
   sendAll: (transactions: TxJson[]) => Promise<Hash>;
   readBalance: (token: Address) => Promise<bigint | null>;
 };
@@ -128,8 +130,21 @@ export function Providers({ children }: { children: React.ReactNode }) {
           const accounts = (await provider.request({ method: "eth_requestAccounts" })) as Address[];
           await addOrSwitch(provider);
           await refresh(accounts[0]);
+        } catch (error) {
+          throw new Error(walletError(error));
         } finally {
           setPending(false);
+        }
+      },
+      ensureGiwaChain: async () => {
+        const provider = ethereumProvider();
+        if (!provider) throw new Error("No injected wallet found. Install MetaMask or another browser wallet.");
+        if (!address) throw new Error("Connect a wallet first.");
+        try {
+          await addOrSwitch(provider);
+          await refresh(address);
+        } catch (error) {
+          throw new Error(walletError(error));
         }
       },
       disconnect: () => {
@@ -148,31 +163,35 @@ export function Providers({ children }: { children: React.ReactNode }) {
       sendAll: async (transactions: TxJson[]) => {
         const provider = ethereumProvider();
         if (!provider || !address) throw new Error("Connect a wallet first.");
-        await addOrSwitch(provider);
-        const wallet = createWalletClient({
-          account: address,
-          chain: giwaSepolia,
-          transport: custom(provider),
-        });
-        let hash: Hash | null = null;
-        for (const tx of transactions) {
-          hash = await wallet.sendTransaction({
+        try {
+          await addOrSwitch(provider);
+          const wallet = createWalletClient({
             account: address,
             chain: giwaSepolia,
-            to: tx.to as Address,
-            data: tx.data as Hex,
-            value: BigInt(tx.value || "0"),
+            transport: custom(provider),
           });
-          const receipt = await publicClient.waitForTransactionReceipt({
-            hash,
-            confirmations: 1,
-            timeout: 90_000,
-          });
-          if (receipt.status !== "success") throw new Error("The transaction reverted.");
+          let hash: Hash | null = null;
+          for (const tx of transactions) {
+            hash = await wallet.sendTransaction({
+              account: address,
+              chain: giwaSepolia,
+              to: tx.to as Address,
+              data: tx.data as Hex,
+              value: BigInt(tx.value || "0"),
+            });
+            const receipt = await publicClient.waitForTransactionReceipt({
+              hash,
+              confirmations: 1,
+              timeout: 90_000,
+            });
+            if (receipt.status !== "success") throw new Error("The transaction reverted.");
+          }
+          if (!hash) throw new Error("Nothing to send.");
+          await refresh(address);
+          return hash;
+        } catch (error) {
+          throw new Error(walletError(error));
         }
-        if (!hash) throw new Error("Nothing to send.");
-        await refresh(address);
-        return hash;
       },
     };
   }, [address, balance, chainId, hasProvider, pending, refresh]);

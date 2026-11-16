@@ -12,10 +12,11 @@ export async function POST(request: Request) {
       side?: "buy" | "sell";
       amount?: string;
       slippageBps?: number;
+      localConfigId?: string;
     };
     if (!body.amount) throw new Error("Enter an amount.");
     slippageBps(body.slippageBps ?? 100);
-    if (!body.curve) return NextResponse.json(await quoteFirstBuy(body.amount, body.slippageBps));
+    if (!body.curve) return NextResponse.json(await quoteFirstBuy(body.amount, body.slippageBps, body.localConfigId));
     if (body.side !== "buy" && body.side !== "sell") throw new Error("Choose buy or sell.");
     return NextResponse.json(await quoteTrade({
       curve: body.curve,

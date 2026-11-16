@@ -1,11 +1,12 @@
 import {
+  getAmmoraV4ConfigAtBlock,
   parseAmmoraV4ConfigCreatedReceipt,
   parseAmmoraV4LaunchCreatedReceipt,
   parseAmmoraV4MigratedReceipt,
   parseAmmoraV4SwapReceipt,
 } from "@ammora-protocol/sdk";
-import { isHash, type Hash } from "viem";
-import type { ReceiptView } from "@/lib/types";
+import { getAddress, isHash, type Hash } from "viem";
+import type { CreatedConfig, ReceiptView } from "@/lib/types";
 import { getClient, v4Core } from "@/lib/ammora/rpc";
 
 export async function readReceipt(hash: string, kind: "launch" | "swap" | "migrate"): Promise<ReceiptView> {
@@ -53,5 +54,21 @@ export async function readReceipt(hash: string, kind: "launch" | "swap" | "migra
 export async function readConfigReceipt(hash: Hash) {
   const receipt = await getClient().getTransactionReceipt({ hash });
   if (receipt.status !== "success") throw new Error("Config creation reverted.");
-  return parseAmmoraV4ConfigCreatedReceipt(receipt, v4Core.configRegistry);
+  return { receipt, created: parseAmmoraV4ConfigCreatedReceipt(receipt, v4Core.configRegistry) };
+}
+
+export async function readCreatedConfig(hash: string, ownerText: string): Promise<CreatedConfig> {
+  if (!isHash(hash)) throw new Error("Transaction hash is not valid.");
+  const owner = getAddress(ownerText);
+  const { receipt, created } = await readConfigReceipt(hash);
+  const confirmed = await getAmmoraV4ConfigAtBlock(getClient(), v4Core.configRegistry, created.configId, receipt.blockNumber);
+  if (confirmed.identity.owner.toLowerCase() !== owner.toLowerCase()) {
+    throw new Error("The receipt Config owner does not match the connected wallet. Do not create it again for this hash.");
+  }
+  return {
+    hash,
+    configId: created.configId.toString(),
+    configHash: created.configHash,
+    owner,
+  };
 }

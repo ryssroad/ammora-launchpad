@@ -65,7 +65,20 @@ Buys spend WETH, not ETH. The token page can wrap a chosen amount of ETH into th
 
 ## Create your Config
 
-The default template lets anyone launch, but its partner, LP, and leftover recipients are not yours. Create one Config and reuse it:
+The default template lets anyone launch, but its partner, LP, and leftover recipients are not yours. Create one Config and reuse it. Both paths use the same SDK plan: template #6, sale supply `1000000000000` (1,000 tokens), graduation threshold `1000000000000` (0.000001 WETH), and all four recipients set to the owner.
+
+### In the browser
+
+Open the site, connect the owner wallet, and expand **Create my Config**.
+
+1. Preview. The card shows the recipients, economics, simulated Config ID, and `reviewHash`. The server simulates the registration with `eth_call` and checks the wallet has enough ETH for gas.
+2. Simulate and sign. The wallet switches to GIWA Sepolia, the plan is built again, and MetaMask asks you to send it. A rejected signature sends nothing.
+3. The receipt is parsed with `parseAmmoraV4ConfigCreatedReceipt`. Copy the Config ID. This browser stores it in `localStorage` and uses it for launches immediately. Other visitors still use the server `CONFIG_ID`.
+4. Set `CONFIG_ID` in the Vercel environment to that ID and redeploy. A custom server Config takes priority over the browser value.
+
+### From the command line
+
+`npm run create-config` still works. It does not require a key for the preview.
 
 ```bash
 # Keyless preview if AMMORA_ACCOUNT is a public address.
@@ -75,7 +88,7 @@ npm run create-config
 AMMORA_SEND=1 AMMORA_REVIEW_HASH=0x… npm run create-config
 ```
 
-The signer must be the Config owner. All four recipients are that address. The script prints a simulated Config ID, then the real ID from `parseAmmoraV4ConfigCreatedReceipt`. Put that ID in `CONFIG_ID`. Do not send the creation twice.
+The signer must be the Config owner. The script prints a simulated Config ID, then the real ID from `parseAmmoraV4ConfigCreatedReceipt`. Put that ID in `CONFIG_ID`. Do not send the creation twice. Keep the private key out of Vercel either way.
 
 The wallet that signs a launch becomes that token's creator. Config ownership does not make you the creator of every token.
 

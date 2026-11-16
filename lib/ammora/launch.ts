@@ -10,9 +10,9 @@ import {
 } from "@ammora-protocol/sdk";
 import { formatUnits, getAddress, type Address, type Hex } from "viem";
 import type { PlanView, QuoteView, TxJson } from "@/lib/types";
-import { readConfig, readConfigSnapshot } from "@/lib/ammora/config";
+import { readActiveConfig, readConfigSnapshot } from "@/lib/ammora/config";
 import { quoteFreshCurve } from "@/lib/ammora/curve";
-import { configIdFromEnv, publicError, slippageBps } from "@/lib/ammora/errors";
+import { publicError, slippageBps } from "@/lib/ammora/errors";
 import { gasCap, getClient, readHead } from "@/lib/ammora/rpc";
 import { parseAmount } from "@/lib/ammora/trade";
 
@@ -45,9 +45,9 @@ function assertMetadata(name: string, symbol: string, metadataUri: string) {
   return { name: cleanName, symbol: cleanSymbol, metadataUri };
 }
 
-export async function quoteFirstBuy(amount: string, slippage?: unknown): Promise<QuoteView> {
+export async function quoteFirstBuy(amount: string, slippage?: unknown, localConfigId?: string | null): Promise<QuoteView> {
   const { finalized, block } = await readHead();
-  const info = await readConfig();
+  const info = await readActiveConfig(localConfigId);
   if (!info.enabled) throw new Error(`Config #${info.configId} is disabled.`);
   const snapshot = await readConfigSnapshot(BigInt(info.configId), finalized);
   const amountIn = parseAmount(amount, info.quoteDecimals);
@@ -90,12 +90,13 @@ export async function planLaunch(input: {
   firstBuy?: string;
   slippage?: unknown;
   account: string;
+  localConfigId?: string | null;
 }): Promise<PlanView> {
   const meta = assertMetadata(input.name, input.symbol, input.metadataUri);
   const account = getAddress(input.account);
   const { block } = await readHead();
-  const configId = configIdFromEnv();
-  const info = await readConfig(configId);
+  const info = await readActiveConfig(input.localConfigId);
+  const configId = BigInt(info.configId);
   if (!info.enabled) throw new Error(`Config #${info.configId} is disabled.`);
   const snapshot = await readConfigSnapshot(configId, block.number);
   if (snapshot.config.tokenDecimals !== info.tokenDecimals) {
@@ -139,7 +140,7 @@ export async function planLaunch(input: {
     };
   }
 
-  const quote = await quoteFirstBuy(firstBuy, input.slippage);
+  const quote = await quoteFirstBuy(firstBuy, input.slippage, input.localConfigId);
   const targets = giwaSepoliaAtomicLaunchTargets;
   const planner = new AmmoraPortableLifecyclePlanner(context, targets);
   try {

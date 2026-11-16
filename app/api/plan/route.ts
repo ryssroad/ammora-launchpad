@@ -1,7 +1,9 @@
+import { getAddress } from "viem";
 import { NextResponse } from "next/server";
+import { planOwnerConfig } from "@/lib/ammora/create-config";
 import { publicError } from "@/lib/ammora/errors";
 import { planLaunch } from "@/lib/ammora/launch";
-import { readReceipt } from "@/lib/ammora/receipts";
+import { readCreatedConfig, readReceipt } from "@/lib/ammora/receipts";
 import { planMigration, planTrade } from "@/lib/ammora/trade";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +20,14 @@ export async function POST(request: Request) {
         firstBuy: typeof body.firstBuy === "string" ? body.firstBuy : "",
         slippage: body.slippageBps,
         account: String(body.account ?? ""),
+        localConfigId: typeof body.localConfigId === "string" ? body.localConfigId : null,
       }));
+    }
+    if (action === "create-config") {
+      return NextResponse.json(await planOwnerConfig({ owner: getAddress(String(body.account ?? "")) }));
+    }
+    if (action === "config-receipt") {
+      return NextResponse.json(await readCreatedConfig(String(body.hash ?? ""), String(body.account ?? "")));
     }
     if (action === "trade") {
       const side = body.side === "sell" ? "sell" : body.side === "buy" ? "buy" : null;

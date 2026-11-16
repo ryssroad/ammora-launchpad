@@ -1,14 +1,34 @@
 import { erc20Abi, getAddress, type Address } from "viem";
 import { getAmmoraV4ConfigAtBlock } from "@ammora-protocol/sdk";
 import { publicChain } from "@/lib/chain";
-import type { ConfigInfo } from "@/lib/types";
-import { configIdFromEnv } from "@/lib/ammora/errors";
+import type { ConfigInfo, ConfigSource } from "@/lib/types";
+import { configIdFromEnv, parsePositiveInt } from "@/lib/ammora/errors";
 import { deployment, ensureCore, getClient, readHead, v4Core } from "@/lib/ammora/rpc";
 
 /** Reviewed public template from the Ammora launchpad guide. Creators can launch on it before owning a Config. */
 export const PUBLIC_TEMPLATE_CONFIG_ID = 6n;
 
 const cache = new Map<string, { at: number; value: ConfigInfo }>();
+
+/**
+ * A custom server CONFIG_ID wins for every visitor.
+ * Template #6 (or an unset env) lets this browser pass a Config it just created.
+ */
+export function resolveActiveConfigId(requested?: string | null): { id: bigint; source: ConfigSource } {
+  const envRaw = process.env.CONFIG_ID?.trim() || process.env.NEXT_PUBLIC_CONFIG_ID?.trim() || "";
+  const envId = envRaw ? parsePositiveInt(envRaw, "CONFIG_ID") : null;
+  const localRaw = requested?.trim() || "";
+  const localId = /^[1-9]\d*$/.test(localRaw) ? BigInt(localRaw) : null;
+  if (envId !== null && envId !== PUBLIC_TEMPLATE_CONFIG_ID) return { id: envId, source: "env" };
+  if (localId !== null && localId !== PUBLIC_TEMPLATE_CONFIG_ID) return { id: localId, source: "local" };
+  return { id: PUBLIC_TEMPLATE_CONFIG_ID, source: "template" };
+}
+
+export async function readActiveConfig(requested?: string | null): Promise<ConfigInfo> {
+  const resolved = resolveActiveConfigId(requested);
+  const info = await readConfig(resolved.id);
+  return { ...info, source: resolved.source, usingPublicTemplate: resolved.source === "template" };
+}
 
 export async function readConfig(configId = configIdFromEnv()): Promise<ConfigInfo> {
   const key = configId.toString();
@@ -25,11 +45,12 @@ export async function readConfig(configId = configIdFromEnv()): Promise<ConfigIn
     client.readContract({ address: quoteToken, abi: erc20Abi, functionName: "decimals", blockNumber: finalized }),
   ]);
 
-  const value: ConfigInfo = {
+  const value = {
     configId: snapshot.configId.toString(),
     configHash: snapshot.configHash,
     enabled: snapshot.enabled,
     usingPublicTemplate: snapshot.configId === PUBLIC_TEMPLATE_CONFIG_ID,
+    source: snapshot.configId === PUBLIC_TEMPLATE_CONFIG_ID ? "template" as const : "env" as const,
     tokenDecimals: snapshot.config.tokenDecimals,
     quoteToken,
     quoteSymbol,

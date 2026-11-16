@@ -2,6 +2,7 @@
 
 import { brand } from "@/lib/brand";
 import { publicChain } from "@/lib/chain";
+import { ConfigAdmin } from "@/components/config-admin";
 import { CreateForm } from "@/components/create-form";
 import { LaunchFeed } from "@/components/launch-feed";
 import { WalletButton } from "@/components/wallet-button";
@@ -25,7 +26,10 @@ export function Home() {
         <WalletButton />
       </header>
       <main className="shell grid items-start gap-6 pb-16 lg:grid-cols-[minmax(0,430px)_minmax(0,1fr)]">
-        <CreateForm />
+        <div className="grid gap-6">
+          <CreateForm />
+          <ConfigAdmin />
+        </div>
         <LaunchFeed />
       </main>
       <footer className="shell flex flex-col gap-3 border-t border-line py-6 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">

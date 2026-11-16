@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 import { buildMetadataUri, httpsUrl } from "@/lib/metadata";
 import { explorerTx } from "@/lib/chain";
 import { formatRaw, shortAddress } from "@/lib/format";
-import type { ConfigInfo, PlanView, QuoteView, ReceiptView } from "@/lib/types";
+import { localConfigId } from "@/lib/local-config";
+import type { PlanView, QuoteView, ReceiptView } from "@/lib/types";
 import { useGiwa } from "@/components/giwa-wallet";
+import { useLaunchConfig } from "@/components/use-launch-config";
 
 export function CreateForm() {
   const { address, sendAll } = useGiwa();
-  const [config, setConfig] = useState<ConfigInfo | null>(null);
-  const [configError, setConfigError] = useState<string | null>(null);
+  const { config, error: configError } = useLaunchConfig();
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
   const [image, setImage] = useState("");
@@ -24,16 +25,6 @@ export function CreateForm() {
   const [result, setResult] = useState<ReceiptView | null>(null);
 
   useEffect(() => {
-    void fetch("/api/config")
-      .then(async (response) => {
-        const body = await response.json();
-        if (!response.ok) throw new Error(body.error || "Config could not be read.");
-        setConfig(body as ConfigInfo);
-      })
-      .catch((reason: unknown) => setConfigError(reason instanceof Error ? reason.message : "Config could not be read."));
-  }, []);
-
-  useEffect(() => {
     if (!firstBuy.trim() || !config) {
       setQuote(null);
       return;
@@ -42,7 +33,7 @@ export function CreateForm() {
       void fetch("/api/quote", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ amount: firstBuy, slippageBps: 100 }),
+        body: JSON.stringify({ amount: firstBuy, slippageBps: 100, localConfigId: localConfigId() }),
       })
         .then(async (response) => {
           const body = await response.json();
@@ -90,6 +81,7 @@ export function CreateForm() {
           firstBuy,
           slippageBps: 100,
           account: address,
+          localConfigId: localConfigId(),
         }),
       });
       const body = await response.json();
@@ -149,11 +141,23 @@ export function CreateForm() {
             {config.enabled ? " · enabled" : " · disabled"} · {config.tokenDecimals} decimals · quote {config.quoteSymbol}
           </p>
           <p>
-            Pool creation fee {formatRaw(config.poolCreationFeeWei, 18)} ETH. Partner fees go to {shortAddress(config.partnerRecipient)}.
+            Pool creation fee {formatRaw(config.poolCreationFeeWei, 18)} ETH. Partner fees go to{" "}
+            {address && config.partnerRecipient.toLowerCase() === address.toLowerCase() ? "your address" : shortAddress(config.partnerRecipient)}.
           </p>
-          {config.usingPublicTemplate ? (
+          {config.source === "template" ? (
             <p className="mt-1 text-clay">
-              This is the public template Config, so partner fees do not come to you. Run <code>npm run create-config</code> and set CONFIG_ID to use your own.
+              This is the public template Config, so partner fees do not come to you. Create your own Config below, or run <code>npm run create-config</code>, then set CONFIG_ID.
+            </p>
+          ) : null}
+          {config.source === "local" ? (
+            <p className="mt-1 text-ok">
+              This browser is using Config #{config.configId} created here. Launches from this browser use it immediately. Other visitors keep the server CONFIG_ID until you set CONFIG_ID in Vercel and redeploy.
+            </p>
+          ) : null}
+          {config.source === "env" ? (
+            <p className="mt-1 text-clay">
+              This site is using Config #{config.configId} from the server environment. Partner fees go to{" "}
+              {address && config.partnerRecipient.toLowerCase() === address.toLowerCase() ? "your address" : shortAddress(config.partnerRecipient)}.
             </p>
           ) : null}
         </div>

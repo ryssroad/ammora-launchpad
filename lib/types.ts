@@ -12,11 +12,14 @@ export type ChainInfo = {
   nativeSymbol: string;
 };
 
+export type ConfigSource = "env" | "local" | "template";
+
 export type ConfigInfo = {
   configId: string;
   configHash: string;
   enabled: boolean;
   usingPublicTemplate: boolean;
+  source: ConfigSource;
   tokenDecimals: number;
   quoteToken: string;
   quoteSymbol: string;
@@ -91,6 +94,38 @@ export type PlanView = {
   quote: QuoteView | null;
   predictedToken: string | null;
   predictedCurve: string | null;
+};
+
+export type ConfigPlan = {
+  chainId: number;
+  registry: string;
+  templateId: string;
+  templateHash: string;
+  owner: string;
+  recipients: {
+    configOwner: string;
+    partnerRecipient: string;
+    liquidityPartner: string;
+    leftoverReceiver: string;
+  };
+  saleSupplyRaw: string;
+  saleSupply: string;
+  quoteThresholdRaw: string;
+  quoteThreshold: string;
+  totalSupplyRaw: string;
+  simulatedConfigId: string;
+  simulatedConfigHash: string;
+  reviewHash: string;
+  transaction: TxJson;
+  simulation: { ok: boolean; message: string };
+  note: string;
+};
+
+export type CreatedConfig = {
+  hash: string;
+  configId: string;
+  configHash: string;
+  owner: string;
 };
 
 export type ReceiptView = {
