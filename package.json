@@ -1,0 +1,37 @@
+{
+  "name": "giwamoon",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "GiwaMoon, a GIWA Sepolia testnet launchpad built with the Ammora SDK.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "create-config": "tsx scripts/create-config.ts",
+    "verify-reads": "tsx scripts/verify-reads.ts"
+  },
+  "dependencies": {
+    "@ammora-protocol/sdk": "0.3.9",
+    "next": "^15.5.29",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "viem": "2.38.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.17",
+    "@types/node": "^22.19.1",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "dotenv": "^17.2.3",
+    "eslint": "^9.39.1",
+    "eslint-config-next": "^15.5.29",
+    "tailwindcss": "^4.1.17",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
