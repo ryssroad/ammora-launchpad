@@ -26,9 +26,8 @@ export function Home() {
         <WalletButton />
       </header>
       <div className="shell pb-7 pt-2">
-        <p className="text-xs tracking-[0.2em] text-gold uppercase">Small ideas. New moons.</p>
-        <h2 className="mt-3 max-w-2xl font-display text-4xl leading-tight sm:text-5xl">Give your idea a life of its own.</h2>
-        <p className="mt-3 max-w-xl text-sm leading-6 text-muted">Create a token, find its glyph, and share it with the world. Explore what others are launching on GIWA testnet.</p>
+        <h2 className="max-w-2xl font-display text-4xl leading-tight sm:text-5xl">Launch and trade on GIWA.</h2>
+        <p className="mt-3 max-w-xl text-sm leading-6 text-muted">Create a token with its own on-chain glyph or discover a market to trade.</p>
       </div>
       <main className="shell grid items-start gap-6 pb-16 lg:grid-cols-[minmax(0,430px)_minmax(0,1fr)]">
         <div className="grid gap-6">

@@ -16,18 +16,18 @@ export default function OpenGraphImage() {
           flexDirection: "column",
           justifyContent: "space-between",
           padding: 72,
-          background: "#110e0c",
-          color: "#f4efe6",
+          background: "#f6f5fb",
+          color: "#202132",
         }}
       >
-        <div style={{ display: "flex", fontSize: 28, letterSpacing: 4, color: "#e4b56a" }}>
+        <div style={{ display: "flex", fontSize: 28, letterSpacing: 4, color: "#805414" }}>
           GIWA SEPOLIA
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <div style={{ fontSize: 108, lineHeight: 1 }}>{brand.name}</div>
-          <div style={{ fontSize: 32, color: "#e7c7a4", maxWidth: 820 }}>{brand.tagline}</div>
+          <div style={{ fontSize: 32, color: "#56576b", maxWidth: 820 }}>{brand.tagline}</div>
         </div>
-        <div style={{ display: "flex", fontSize: 24, color: "#b4aa9c" }}>
+        <div style={{ display: "flex", fontSize: 24, color: "#56576b" }}>
           {brand.builtWith} · Testnet only, pre-audit software
         </div>
       </div>

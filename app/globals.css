@@ -3,17 +3,17 @@
 @theme {
   --font-sans: var(--font-outfit), "Avenir Next", "Segoe UI", sans-serif;
   --font-display: var(--font-fraunces), Georgia, serif;
-  --color-ink: #f4efe6;
-  --color-muted: #b4aa9c;
-  --color-paper: #100e0c;
-  --color-card: #1b1814;
-  --color-card-2: #241f1a;
-  --color-line: #3c342b;
-  --color-gold: #e4b56a;
-  --color-gold-deep: #8c6230;
-  --color-clay: #e7c7a4;
-  --color-danger: #f0b2a4;
-  --color-ok: #c5ddb8;
+  --color-ink: #202132;
+  --color-muted: #56576b;
+  --color-paper: #f6f5fb;
+  --color-card: #fff;
+  --color-card-2: #f8f7fc;
+  --color-line: #dcdcea;
+  --color-gold: #805414;
+  --color-gold-deep: #69420e;
+  --color-clay: #765320;
+  --color-danger: #9d343a;
+  --color-ok: #285f47;
 }
 
 html {
@@ -25,27 +25,9 @@ body {
   min-height: 100vh;
   color: var(--color-ink);
   background:
-    radial-gradient(900px 420px at 100% -10%, rgb(228 181 106 / 16%), transparent 55%),
-    radial-gradient(700px 380px at -10% 20%, rgb(140 98 48 / 18%), transparent 50%),
+    radial-gradient(ellipse 880px 390px at 82% 0%, #eae5f9 0%, transparent 78%),
     var(--color-paper);
   font-family: var(--font-sans);
-}
-
-body::before {
-  content: "";
-  pointer-events: none;
-  z-index: -1;
-  position: fixed;
-  inset: auto -80px auto auto;
-  top: 88px;
-  width: 280px;
-  height: 280px;
-  border-radius: 999px;
-  background:
-    radial-gradient(circle at 38% 38%, #f7e7c4 0 18%, transparent 19%),
-    radial-gradient(circle at 62% 46%, #d7b27a 0 42%, #c49655 43% 70%, transparent 71%);
-  opacity: 0.18;
-  filter: blur(0.2px);
 }
 
 button,
@@ -57,7 +39,8 @@ textarea {
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
-a:focus-visible {
+a:focus-visible,
+summary:focus-visible {
   outline: 2px solid var(--color-gold);
   outline-offset: 2px;
 }
@@ -68,29 +51,29 @@ a:focus-visible {
 }
 
 .notice {
-  background: #2c2118;
+  background: #eeeaf9;
   color: var(--color-clay);
-  border-bottom: 1px solid #4a3828;
+  border-bottom: 1px solid #ddd6ed;
 }
 
 .panel {
-  background: color-mix(in srgb, var(--color-card) 92%, transparent);
+  background: var(--color-card);
   border: 1px solid var(--color-line);
   border-radius: 28px;
-  box-shadow: 0 24px 60px rgb(0 0 0 / 22%);
+  box-shadow: 0 8px 30px rgb(40 36 80 / 6%);
 }
 
 .field {
   width: 100%;
   border-radius: 16px;
-  border: 1px solid var(--color-line);
-  background: #120f0c;
+  border: 1px solid #aba9bd;
+  background: #fdfcff;
   color: var(--color-ink);
   padding: 12px 14px;
 }
 
 .field::placeholder {
-  color: #7d756b;
+  color: #696a7e;
 }
 
 .btn {
@@ -115,8 +98,13 @@ a:focus-visible {
 }
 
 .btn-gold {
-  background: linear-gradient(180deg, #f0cb86, var(--color-gold) 42%, #c48a3d);
-  color: #23180d;
+  border: 1px solid #e8b65e;
+  background: #f4cb7a;
+  color: #322107;
+}
+
+.btn-gold:not(:disabled):hover {
+  background: #f7d796;
 }
 
 .btn-ghost {
@@ -141,35 +129,35 @@ a:focus-visible {
 }
 
 .pill.active {
-  color: #d7ecc8;
-  border-color: #3e5a3a;
-  background: #1a2718;
+  color: #246248;
+  border-color: #b7ddcc;
+  background: #eaf6ef;
 }
 
 .pill.ready {
-  color: #f3ddb0;
-  border-color: #6d5430;
-  background: #2a2116;
+  color: #75531e;
+  border-color: #e9d6ae;
+  background: #fff5de;
 }
 
 .pill.done {
-  color: #d5e4f5;
-  border-color: #35506a;
-  background: #17222c;
+  color: #43528c;
+  border-color: #cdd5f4;
+  background: #edf0ff;
 }
 
 .bar {
   height: 6px;
   overflow: hidden;
   border-radius: 999px;
-  background: #2a241d;
+  background: #ebe8f3;
 }
 
 .bar > span {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #8c6230, var(--color-gold));
+  background: linear-gradient(90deg, #b57e2b, #e8b65e);
 }
 
 .modal-backdrop {
@@ -178,7 +166,7 @@ a:focus-visible {
   z-index: 30;
   display: grid;
   place-items: end center;
-  background: rgb(8 7 6 / 72%);
+  background: rgb(31 29 55 / 34%);
   padding: 16px;
 }
 
