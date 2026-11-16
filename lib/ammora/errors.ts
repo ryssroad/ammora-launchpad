@@ -1,6 +1,9 @@
 export function publicError(error: unknown) {
   const record = error && typeof error === "object" ? (error as { shortMessage?: string; message?: string }) : null;
   const message = record?.shortMessage || record?.message || "Request failed.";
+  if (/^RPC Request failed\.?$|timed out|too many requests/i.test(message)) {
+    return "GIWA could not answer this request. Wait a moment and try again.";
+  }
   return message.replace(/https?:\/\/\S+/g, "[endpoint]").slice(0, 420);
 }
 

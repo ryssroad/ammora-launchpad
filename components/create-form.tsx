@@ -201,7 +201,7 @@ export function CreateForm() {
           <input className="field" value={description} maxLength={140} onChange={(event) => setDescription(event.target.value)} placeholder="Optional" />
         </label>
         <label className="grid gap-1 text-sm text-muted">
-          First buy ({config?.quoteSymbol ?? "quote token"}, optional)
+          Spend on first buy ({config?.quoteSymbol ?? "quote token"}, optional)
           <input className="field" value={firstBuy} onChange={(event) => setFirstBuy(event.target.value)} placeholder="Leave blank to skip" inputMode="decimal" />
         </label>
         {firstBuy ? <p className="text-xs leading-5 text-muted">You need {config?.quoteSymbol ?? "WETH"} for this purchase and ETH for gas. Leave blank to launch without buying.</p> : null}

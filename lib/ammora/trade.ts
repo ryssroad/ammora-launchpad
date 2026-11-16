@@ -3,7 +3,7 @@ import {
   minOutFromSlippage,
   planERC20Approvals,
 } from "@ammora-protocol/sdk";
-import { formatUnits, parseUnits, type Address, type Hex } from "viem";
+import { erc20Abi, formatUnits, parseUnits, type Address, type Hex } from "viem";
 import type { PlanView, QuoteView, TxJson } from "@/lib/types";
 import { describeFill, readLaunchCard } from "@/lib/ammora/curve";
 import { asAddress } from "@/lib/ammora/config";
@@ -85,14 +85,23 @@ export async function planTrade(input: {
   slippage?: unknown;
   account: string;
 }): Promise<PlanView> {
-  const preview = await quoteTrade(input);
-  if (!preview.executable) throw new Error(preview.message);
   const { block } = await readHead();
   const curve = asAddress(input.curve, "Curve");
   const account = asAddress(input.account, "Account");
   const card = await readLaunchCard(curve, block.number);
+  if (card.status !== 1) throw new Error("This token is no longer trading on the launch curve.");
   const decimals = input.side === "sell" ? card.decimals : card.quoteDecimals;
   const amountIn = parseAmount(input.amount, decimals);
+  const inputSymbol = input.side === "sell" ? card.symbol : card.quoteSymbol;
+  const balance = await getClient().readContract({
+    address: asAddress(input.side === "sell" ? card.token : card.quoteToken, "Input token"),
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [account],
+  });
+  if (balance < amountIn) {
+    throw new Error(`You need ${formatUnits(amountIn - balance, decimals)} more ${inputSymbol} for this trade.`);
+  }
   const sdk = new AmmoraV4LaunchCurveClient(getClient(), curve, {
     launchFactory: v4Core.launchFactory,
     feePolicy: v4Core.feePolicy,
@@ -110,39 +119,37 @@ export async function planTrade(input: {
     recipient: account,
     deadline: block.timestamp + 20n * 60n,
   });
+  const actualFill = describeFill(plan.quote, baseForQuote);
+  if (!actualFill.executable || plan.quote.minimumAmountOut === 0n) throw new Error(
+    actualFill.executable ? "Minimum output rounds to zero. Raise the amount or lower slippage." : actualFill.message,
+  );
   const approvals = await planERC20Approvals(getClient(), account, plan.approvalRequirements);
   const approvalTransactions = approvals.flatMap((item) => item.transactions.map(txJson));
   const minimum = plan.quote.minimumAmountOut;
   const outputDecimals = input.side === "sell" ? card.quoteDecimals : card.decimals;
-  const inputSymbol = input.side === "sell" ? card.symbol : card.quoteSymbol;
   const outputSymbol = input.side === "sell" ? card.quoteSymbol : card.symbol;
   return {
     status: "READY",
     action: "trade",
     summary: [
-      `${input.side === "buy" ? "Buy" : "Sell"} ${formatUnits(amountIn, decimals)} ${inputSymbol}`,
+      `You pay up to ${formatUnits(amountIn, decimals)} ${inputSymbol}.`,
       `Minimum received ${formatUnits(minimum, outputDecimals)} ${outputSymbol} (${(bps / 100).toString()}% slippage)`,
       approvalTransactions.length
         ? `Approve ${inputSymbol} for this curve, then the swap is signed separately.`
         : "No new token approval is required.",
-      described.message,
+      ...(actualFill.fill.kind === "full" ? [] : [actualFill.message]),
     ],
     transaction: txJson(plan.transaction),
     approvalTransactions,
     replanAfterApproval: false,
-    quote: {
-      ...preview,
-      amountOutRaw: fresh.amountOut.toString(),
-      amountLeftRaw: fresh.amountLeft.toString(),
-      feeRaw: fresh.fee.toString(),
-      minimumAmountOutRaw: minimum.toString(),
-      amountOut: formatUnits(fresh.amountOut, outputDecimals),
-      amountLeft: formatUnits(fresh.amountLeft, decimals),
-      fee: formatUnits(fresh.fee, decimals),
-      minimumAmountOut: formatUnits(minimum, outputDecimals),
-      asOfBlock: block.number.toString(),
-      message: described.message,
-    },
+    quote: viewFromQuote({
+      side: input.side,
+      quote: plan.quote,
+      minimum,
+      described: actualFill,
+      card,
+      block: plan.quote.asOfBlock.toString(),
+    }),
     predictedToken: null,
     predictedCurve: null,
   };

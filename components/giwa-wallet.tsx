@@ -33,7 +33,7 @@ type GiwaWallet = {
   disconnect: () => void;
   ensureGiwaChain: () => Promise<void>;
   sendAll: (transactions: TxJson[], onSubmitted?: (hash: Hash) => void) => Promise<Hash>;
-  readBalance: (token: Address) => Promise<bigint | null>;
+  readBalance: (token?: Address) => Promise<bigint | null>;
 };
 
 const GiwaContext = createContext<GiwaWallet | null>(null);
@@ -151,8 +151,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         setAddress(null);
         setBalance(null);
       },
-      readBalance: async (token: Address) => {
+      readBalance: async (token?: Address) => {
         if (!address || chainId !== giwaSepolia.id) return null;
+        if (!token) return publicClient.getBalance({ address }).catch(() => null);
         return publicClient.readContract({
           address: token,
           abi: erc20Abi,

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { encodeFunctionData, parseEther, type Address } from "viem";
-import { explorerAddress, explorerTx } from "@/lib/chain";
+import { encodeFunctionData, type Address } from "viem";
+import { explorerAddress, explorerTx, publicChain } from "@/lib/chain";
 import { formatRaw, progressPercent, shortAddress, statusTone } from "@/lib/format";
 import type { LaunchCard, PlanView, QuoteView, ReceiptView } from "@/lib/types";
 import { useGiwa } from "@/components/giwa-wallet";
@@ -14,7 +14,8 @@ export function TokenModal({ launch: initialLaunch, onClose }: { launch: LaunchC
   const [slippage, setSlippage] = useState("1");
   const [quote, setQuote] = useState<QuoteView | null>(null);
   const [plan, setPlan] = useState<PlanView | null>(null);
-  const [wrapAmount, setWrapAmount] = useState("0.001");
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [quoteVersion, setQuoteVersion] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hash, setHash] = useState<string | null>(null);
@@ -22,7 +23,7 @@ export function TokenModal({ launch: initialLaunch, onClose }: { launch: LaunchC
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [receipt, setReceipt] = useState<ReceiptView | null>(null);
 
-  const { address, chainId, sendAll, readBalance } = useGiwa();
+  const { address, chainId, connect, sendAll, readBalance } = useGiwa();
   const [planKey, setPlanKey] = useState("");
   const formKey = JSON.stringify([address, chainId, amount, side, slippage, launch.curve]);
   const currentPlan = planKey === formKey ? plan : null;
@@ -32,6 +33,17 @@ export function TokenModal({ launch: initialLaunch, onClose }: { launch: LaunchC
   const slippageBps = Math.round(Number(slippage) * 100);
   const [quoteBalance, setQuoteBalance] = useState<bigint | null>(null);
   const [tokenBalance, setTokenBalance] = useState<bigint | null>(null);
+  const [nativeBalance, setNativeBalance] = useState<bigint | null>(null);
+  const isGiwa = chainId === publicChain.id;
+  const inputSymbol = side === "buy" ? launch.quoteSymbol : launch.symbol;
+  const outputSymbol = side === "buy" ? launch.symbol : launch.quoteSymbol;
+  const outputDecimals = side === "buy" ? launch.decimals : launch.quoteDecimals;
+  const inputBalance = side === "buy" ? quoteBalance : tokenBalance;
+  const needed = quote ? BigInt(quote.amountInRaw) + BigInt(quote.amountLeftRaw) : 0n;
+  const shortfall = isGiwa && inputBalance !== null && needed > inputBalance ? needed - inputBalance : 0n;
+  const canWrap = side === "buy" && launch.quoteToken.toLowerCase() === publicChain.wrappedEth.toLowerCase();
+  const showBalance = (value: bigint | null, decimals: number) =>
+    isGiwa && value !== null ? formatRaw(value, decimals, 6) : "—";
 
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
@@ -40,7 +52,8 @@ export function TokenModal({ launch: initialLaunch, onClose }: { launch: LaunchC
     dialogRef.current?.focus();
     function onKey(event: KeyboardEvent) {
       if (event.key === "Tab") {
-        const items = dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled)');
+        const items = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), summary') ?? [])
+          .filter((item) => item.getClientRects().length > 0);
         if (items?.length) {
           const first = items[0], last = items[items.length - 1];
           if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) { event.preventDefault(); last.focus(); }
@@ -55,14 +68,19 @@ export function TokenModal({ launch: initialLaunch, onClose }: { launch: LaunchC
 
   useEffect(() => {
     let cancelled = false;
+    setQuoteBalance(null);
+    setTokenBalance(null);
+    setNativeBalance(null);
     void (async () => {
-      const [quoteValue, tokenValue] = await Promise.all([
+      const [quoteValue, tokenValue, nativeValue] = await Promise.all([
         readBalance(launch.quoteToken as Address),
         readBalance(launch.token as Address),
+        readBalance(),
       ]);
       if (!cancelled) {
         setQuoteBalance(quoteValue);
         setTokenBalance(tokenValue);
+        setNativeBalance(nativeValue);
       }
     })();
     return () => {
@@ -73,10 +91,8 @@ export function TokenModal({ launch: initialLaunch, onClose }: { launch: LaunchC
   useEffect(() => {
     const controller = new AbortController();
     setQuote(null);
-    if (!trading || !amount.trim()) {
-      setQuote(null);
-      return;
-    }
+    setQuoteError(null);
+    if (!trading || !amount.trim()) return;
     const handle = setTimeout(() => {
       void fetch("/api/quote", {
         method: "POST",
@@ -89,16 +105,15 @@ export function TokenModal({ launch: initialLaunch, onClose }: { launch: LaunchC
           if (!response.ok) throw new Error(body.error || "Quote failed.");
           if (controller.signal.aborted) return;
           setQuote(body as QuoteView);
-          setError(null);
         })
         .catch((reason: unknown) => {
           if (controller.signal.aborted) return;
           setQuote(null);
-          setError(reason instanceof Error ? reason.message : "Quote failed.");
+          setQuoteError(reason instanceof Error ? reason.message : "Quote failed.");
         });
     }, 350);
     return () => { clearTimeout(handle); controller.abort(); };
-  }, [amount, side, slippageBps, launch.curve, trading]);
+  }, [amount, side, slippageBps, launch.curve, trading, quoteVersion]);
 
   async function prepare(action: "trade" | "migrate") {
     setError(null);
@@ -153,7 +168,7 @@ export function TokenModal({ launch: initialLaunch, onClose }: { launch: LaunchC
         body: JSON.stringify({ action: "receipt", kind: plan.action === "migrate" ? "migrate" : "swap", hash: sent }),
       });
       const body = await response.json();
-      if (!response.ok) throw new Error("Transaction confirmed. Details are temporarily unavailable; check the explorer.");
+      if (!response.ok) throw new Error("Transaction confirmed. Details are temporarily unavailable. Check the explorer.");
       setReceiptSide(side);
       setReceipt(body as ReceiptView);
       setRefreshVersion((value) => value + 1);
@@ -166,11 +181,11 @@ export function TokenModal({ launch: initialLaunch, onClose }: { launch: LaunchC
   }
 
   async function wrap() {
+    if (!canWrap || shortfall <= 0n) return;
     setError(null);
-    setBusy("Wrapping ETH to the quote token…");
+    setPlan(null);
+    setBusy("Waiting for ETH to be wrapped…");
     try {
-      if (launch.quoteSymbol !== "WETH") throw new Error(`Buys spend ${launch.quoteSymbol}. This form only wraps ETH when the quote token is WETH.`);
-      if (parseEther(wrapAmount) <= 0n) throw new Error("Enter a positive amount to wrap.");
       const sent = await sendAll([
         {
           to: launch.quoteToken,
@@ -178,19 +193,17 @@ export function TokenModal({ launch: initialLaunch, onClose }: { launch: LaunchC
             abi: [{ type: "function", name: "deposit", stateMutability: "payable", inputs: [], outputs: [] }],
             functionName: "deposit",
           }),
-          value: parseEther(wrapAmount).toString(),
+          value: shortfall.toString(),
         },
-      ]);
+      ], setHash);
       setHash(sent);
-      setQuoteBalance(await readBalance(launch.quoteToken as Address));
+      setRefreshVersion((value) => value + 1);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Wrap failed.");
     } finally {
       setBusy(null);
     }
   }
-
-  const inputSymbol = side === "buy" ? launch.quoteSymbol : launch.symbol;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -248,35 +261,61 @@ export function TokenModal({ launch: initialLaunch, onClose }: { launch: LaunchC
               ))}
             </div>
             <label className="grid gap-1 text-sm text-muted">
-              Amount ({inputSymbol})
-              <input className="field" value={amount} onChange={(event) => { setAmount(event.target.value); setPlan(null); }} inputMode="decimal" />
+              You pay ({inputSymbol})
+              <input className="field" value={amount} onChange={(event) => { setAmount(event.target.value); setQuote(null); setError(null); }} inputMode="decimal" placeholder="0.0" />
             </label>
-            <label className="grid gap-1 text-sm text-muted">
-              Slippage %
-              <input className="field" value={slippage} onChange={(event) => { setSlippage(event.target.value); setPlan(null); }} inputMode="decimal" />
-            </label>
-            {quote ? (
-              <p className="text-sm leading-6 text-muted">
-                Expected {formatRaw(quote.amountOutRaw, side === "buy" ? quote.tokenDecimals : quote.quoteDecimals)} {side === "buy" ? launch.symbol : launch.quoteSymbol}.
-                Minimum {formatRaw(quote.minimumAmountOutRaw, side === "buy" ? quote.tokenDecimals : quote.quoteDecimals)}. {quote.fillKind !== "full" ? quote.message : null}
-              </p>
-            ) : null}
-            <div className="flex flex-wrap gap-2 text-xs text-muted">
-              <span>Wallet {launch.quoteSymbol}: {quoteBalance !== null ? formatRaw(quoteBalance, launch.quoteDecimals, 4) : "—"}</span>
-              <span>{launch.symbol}: {tokenBalance !== null ? formatRaw(tokenBalance, launch.decimals, 4) : "—"}</span>
+            <div className="rounded-2xl border border-line p-3" aria-live="polite">
+              <p className="text-xs text-muted">You receive (estimated)</p>
+              <p className="mt-1 font-medium">{quote ? formatRaw(quote.amountOutRaw, outputDecimals) : "—"} {outputSymbol}</p>
+              {quote?.executable ? <p className="mt-1 text-xs text-muted">Minimum {formatRaw(quote.minimumAmountOutRaw, outputDecimals)} {outputSymbol}</p> : null}
+              {quote && quote.fillKind !== "full" ? <p className="mt-1 text-xs text-muted">{quote.message}</p> : null}
             </div>
-            {launch.quoteSymbol === "WETH" ? (
-              <div className="rounded-2xl border border-line p-3">
-                <p className="text-sm text-muted">ETH pays gas. Buys spend WETH. Wrap only the amount you want to trade.</p>
-                <div className="mt-2 flex gap-2">
-                  <input className="field" aria-label="ETH to wrap" value={wrapAmount} onChange={(event) => setWrapAmount(event.target.value)} inputMode="decimal" />
-                  <button className="btn btn-ghost shrink-0" disabled={Boolean(busy)} onClick={() => void wrap()}>Wrap ETH</button>
-                </div>
+            {quoteError ? (
+              <div className="flex items-center justify-between gap-2">
+                <p role="alert" className="text-sm text-danger">{quoteError}</p>
+                <button type="button" className="btn btn-ghost shrink-0" onClick={() => setQuoteVersion((value) => value + 1)}>Retry quote</button>
               </div>
+            ) : null}
+            <details className="text-sm text-muted">
+              <summary className="cursor-pointer">Slippage · {slippage}%</summary>
+              <label className="mt-2 grid gap-1">
+                Slippage %
+                <input className="field" value={slippage} onChange={(event) => setSlippage(event.target.value)} inputMode="decimal" />
+              </label>
+            </details>
+            {address && isGiwa ? (
+              <div className="text-xs text-muted">
+                <p className="flex flex-wrap gap-x-3 gap-y-1">
+                  <span>{showBalance(nativeBalance, 18)} ETH</span>
+                  <span>{showBalance(quoteBalance, launch.quoteDecimals)} {launch.quoteSymbol}</span>
+                  <span>{showBalance(tokenBalance, launch.decimals)} {launch.symbol}</span>
+                </p>
+                {(quoteBalance === null || tokenBalance === null || nativeBalance === null) ? (
+                  <button className="mt-1 underline" onClick={() => setRefreshVersion((value) => value + 1)}>Refresh balances</button>
+                ) : null}
+              </div>
+            ) : null}
+            {shortfall > 0n ? (
+              <div className="rounded-2xl border border-line p-3 text-sm text-muted">
+                <p>Missing {formatRaw(shortfall, side === "buy" ? launch.quoteDecimals : launch.decimals, 18)} {inputSymbol}.</p>
+                {canWrap ? <p className="mt-1">This market uses wrapped ETH. Convert the difference, then review the buy. Keep some ETH for gas.</p> : null}
+                {canWrap && nativeBalance !== null && nativeBalance <= shortfall ? <p className="mt-1">Not enough ETH to wrap and pay gas.</p> : null}
+                {canWrap ? (
+                  <button className="btn btn-gold mt-3" disabled={nativeBalance === null || nativeBalance <= shortfall} onClick={() => void wrap()}>
+                    Wrap {formatRaw(shortfall, 18, 18)} ETH
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            {!address || !isGiwa ? (
+              <button className="btn btn-gold" onClick={() => void connect().catch((reason: Error) => setError(reason.message))}>
+                {address ? "Switch to GIWA Sepolia" : "Connect wallet"}
+              </button>
             ) : (
-              <p className="text-sm text-muted">Buys spend {launch.quoteSymbol}. ETH is only for gas.</p>
+              <button className="btn btn-gold" disabled={!quote?.executable || shortfall > 0n} onClick={() => void prepare("trade")}>
+                Review {side}
+              </button>
             )}
-            <button className="btn btn-gold" disabled={Boolean(busy)} onClick={() => void prepare("trade")}>Review {side}</button>
           </fieldset>
         ) : null}
 

@@ -55,7 +55,8 @@ export function getClient() {
     chain: giwaChain,
     transport: http(publicRpcUrl, {
       timeout: 12_000,
-      retryCount: 0,
+      retryCount: 1,
+      retryDelay: 300,
       batch: { batchSize: 30, wait: 0 },
     }),
   });
