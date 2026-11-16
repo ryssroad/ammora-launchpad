@@ -48,8 +48,11 @@ export async function planOwnerConfig(input: {
   console.info("[create-config] public RPC", new URL(publicRpcUrl).host);
   const { block } = await step("Checking the public GIWA Sepolia RPC", () => readHead());
   const template = await step(`Reading template Config #${templateId.toString()}`, async () => {
-    await ensureCore(block.number);
-    return getAmmoraV4ConfigAtBlock(getClient(), v4Core.configRegistry, templateId, block.number);
+    const [, snapshot] = await Promise.all([
+      ensureCore(block.number),
+      getAmmoraV4ConfigAtBlock(getClient(), v4Core.configRegistry, templateId, block.number),
+    ]);
+    return snapshot;
   });
   const client = getClient();
   if (!template.enabled) throw new Error(`Template Config #${templateId} is disabled.`);
@@ -65,13 +68,15 @@ export async function planOwnerConfig(input: {
     leftoverReceiver: owner,
     liquidityDistribution: { ...derived.config.liquidityDistribution, partner: owner },
   };
-  const quoteDecimals = await step("Reading the quote token", () => client.readContract({
-    address: config.quoteToken,
-    abi: erc20Abi,
-    functionName: "decimals",
-    blockNumber: block.number,
-  }));
-  const context = await step("Verifying the reviewed GIWA deployment", () => verifyAmmoraPortableDeploymentAtBlock(client, giwaSepoliaAtomicLaunchDeployment, block.number));
+  const [quoteDecimals, context] = await Promise.all([
+    step("Reading the quote token", () => client.readContract({
+      address: config.quoteToken,
+      abi: erc20Abi,
+      functionName: "decimals",
+      blockNumber: block.number,
+    })),
+    step("Verifying the reviewed GIWA deployment", () => verifyAmmoraPortableDeploymentAtBlock(client, giwaSepoliaAtomicLaunchDeployment, block.number)),
+  ]);
   const maxFee = await gasCap(block.baseFeePerGas);
   const planner = new AmmoraPortableLifecyclePlanner(context, giwaSepoliaAtomicLaunchTargets);
   const plan = await step("Building the unsigned Config plan", () => planner.planConfigRegistration({

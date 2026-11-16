@@ -56,6 +56,7 @@ Buys spend WETH, not ETH. The token page can wrap a chosen amount of ETH into th
 | --- | --- | --- |
 | `CONFIG_ID` | Server, optional | Launch Config. Defaults to `6`, the reviewed public template, so the site works before you create one. Partner fees on that template go to its existing recipient. |
 | `NEXT_PUBLIC_CONFIG_ID` | Optional | Used only when `CONFIG_ID` is unset. |
+| `NEXT_PUBLIC_OWNER_ADDRESS` | Public, build-time | Owner wallet. Connecting it shows **Create my Config** and the Config fee notes. It is inlined into the client, so set it on Vercel before the build. |
 | `AMMORA_PRIVATE_KEY` | Local `create-config` only | Throwaway testnet key. Never set this on Vercel and never prefix it with `NEXT_PUBLIC_`. |
 | `AMMORA_ACCOUNT` | Local preview | Public address for a keyless Config preview. |
 | `AMMORA_SEND` | Local | `0` previews. `1` sends, and only with `AMMORA_REVIEW_HASH`. |
@@ -69,7 +70,14 @@ The default template lets anyone launch, but its partner, LP, and leftover recip
 
 ### In the browser
 
-Open the site, connect the owner wallet, and expand **Create my Config**.
+Public visitors do not see **Create my Config** or the note that partner fees on the public template do not come to them. They only see a short Config number.
+
+The owner UI appears when either of these is true:
+
+- The page is opened with `?admin` once. That browser stores the flag and keeps showing the owner tools afterward.
+- The connected wallet equals `NEXT_PUBLIC_OWNER_ADDRESS`.
+
+Then expand **Create my Config**.
 
 1. Preview. Reads use the public GIWA HTTP RPC, not the wallet. Each step has a 20 second limit and the card lists the step in progress. The card shows the recipients, economics, simulated Config ID, and `reviewHash`. The server simulates the registration with `eth_call` and checks the wallet has enough ETH for gas. Retry if a step times out.
 2. Simulate and sign. The wallet switches to GIWA Sepolia, the plan is built again, and MetaMask asks you to send it. A rejected signature sends nothing.

@@ -8,9 +8,11 @@ import { localConfigId } from "@/lib/local-config";
 import type { PlanView, QuoteView, ReceiptView } from "@/lib/types";
 import { useGiwa } from "@/components/giwa-wallet";
 import { useLaunchConfig } from "@/components/use-launch-config";
+import { useOwnerMode } from "@/components/use-owner";
 
 export function CreateForm() {
   const { address, sendAll } = useGiwa();
+  const isOwner = useOwnerMode();
   const { config, error: configError } = useLaunchConfig();
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
@@ -134,7 +136,8 @@ export function CreateForm() {
         Name, ticker, and an image URL are enough. Metadata is stored in the transaction as JSON, so no IPFS key is required.
       </p>
 
-      {config ? (
+      {config && !isOwner ? <p className="mt-4 text-xs text-muted">Config #{config.configId}</p> : null}
+      {config && isOwner ? (
         <div className="mt-4 rounded-2xl border border-line bg-card-2 px-4 py-3 text-sm leading-6 text-muted">
           <p>
             Config #{config.configId}
@@ -161,9 +164,10 @@ export function CreateForm() {
             </p>
           ) : null}
         </div>
-      ) : (
+      ) : null}
+      {isOwner && !config ? (
         <p className="mt-4 text-sm text-danger">{configError || "Reading the live Config…"}</p>
-      )}
+      ) : null}
 
       <div className="mt-5 grid gap-3">
         <label className="grid gap-1 text-sm text-muted">

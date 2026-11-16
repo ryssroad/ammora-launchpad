@@ -9,8 +9,10 @@ import { stepOf } from "@/lib/ammora/timeout";
 import type { ConfigPlan, CreatedConfig } from "@/lib/types";
 import { walletError } from "@/lib/wallet-error";
 import { useGiwa } from "@/components/giwa-wallet";
+import { useOwnerMode } from "@/components/use-owner";
 
 export function ConfigAdmin() {
+  const isOwner = useOwnerMode();
   const { address, ensureGiwaChain, sendAll } = useGiwa();
   const [open, setOpen] = useState(false);
   const [plan, setPlan] = useState<ConfigPlan | null>(null);
@@ -111,6 +113,8 @@ export function ConfigAdmin() {
     await navigator.clipboard.writeText(id);
     setCopied(true);
   }
+
+  if (!isOwner) return null;
 
   return (
     <section className="panel p-5 sm:p-6">

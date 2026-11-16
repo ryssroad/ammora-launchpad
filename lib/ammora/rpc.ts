@@ -53,7 +53,11 @@ let chainCheck: Promise<void> | null = null;
 export function getClient() {
   client ??= createPublicClient({
     chain: giwaChain,
-    transport: http(publicRpcUrl, { timeout: 12_000, retryCount: 0 }),
+    transport: http(publicRpcUrl, {
+      timeout: 12_000,
+      retryCount: 0,
+      batch: { batchSize: 30, wait: 0 },
+    }),
   });
   return client;
 }
@@ -89,10 +93,15 @@ export function ensureCore(blockNumber: bigint) {
 }
 
 export async function readHead() {
-  await ensureChain();
-  const finalized = await resolveAmmoraFinalizedHead([getClient()], giwaSepoliaAutoRoute.finality);
-  const latest = await getClient().getBlockNumber();
-  const block = await getClient().getBlock({ blockNumber: finalized });
+  const client = getClient();
+  const [, finalized] = await Promise.all([
+    ensureChain(),
+    resolveAmmoraFinalizedHead([client], giwaSepoliaAutoRoute.finality),
+  ]);
+  const [latest, block] = await Promise.all([
+    client.getBlockNumber(),
+    client.getBlock({ blockNumber: finalized }),
+  ]);
   return { finalized, latest, block };
 }
 
