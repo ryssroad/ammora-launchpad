@@ -10,6 +10,7 @@ export const publicChain = {
   name: "GIWA Sepolia",
   rpcUrl: "https://sepolia-rpc.giwa.io",
   explorerUrl: "https://sepolia-explorer.giwa.io",
+  wrappedEth: "0x4200000000000000000000000000000000000006",
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
 } as const;
 
