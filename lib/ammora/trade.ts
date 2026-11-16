@@ -1,9 +1,10 @@
 import {
   AmmoraV4LaunchCurveClient,
+  ammoraLaunchPoolV4Abi,
   minOutFromSlippage,
   planERC20Approvals,
 } from "@ammora-protocol/sdk";
-import { erc20Abi, formatUnits, parseUnits, type Address, type Hex } from "viem";
+import { BaseError, ContractFunctionRevertedError, erc20Abi, formatUnits, parseUnits, type Address, type Hex } from "viem";
 import type { PlanView, QuoteView, TxJson } from "@/lib/types";
 import { describeFill, readLaunchCard } from "@/lib/ammora/curve";
 import { asAddress } from "@/lib/ammora/config";
@@ -155,16 +156,36 @@ export async function planTrade(input: {
   };
 }
 
-export async function planMigration(curveText: string): Promise<PlanView> {
-  const { block } = await readHead();
+export async function planMigration(curveText: string, accountText: string): Promise<PlanView> {
   const curve = asAddress(curveText, "Curve");
+  const account = asAddress(accountText, "Account");
+  const { block } = await readHead();
   const card = await readLaunchCard(curve, block.number);
   if (card.status !== 2) throw new Error("Migration is only available once the curve is Ready to migrate.");
-  const sdk = new AmmoraV4LaunchCurveClient(getClient(), curve, {
+  const client = getClient();
+  const sdk = new AmmoraV4LaunchCurveClient(client, curve, {
     launchFactory: v4Core.launchFactory,
     feePolicy: v4Core.feePolicy,
   });
   const plan = await sdk.planMigrateAtBlock(block.number);
+  try {
+    // Recheck execution against the latest state, since another wallet can migrate first.
+    await client.simulateContract({
+      address: plan.transaction.to,
+      abi: ammoraLaunchPoolV4Abi,
+      functionName: "migrate",
+      account,
+      blockTag: "latest",
+    });
+  } catch (error) {
+    const revert = error instanceof BaseError
+      ? error.walk((cause) => cause instanceof ContractFunctionRevertedError)
+      : null;
+    if (revert instanceof ContractFunctionRevertedError && revert.data?.errorName === "MigrationNotReady") {
+      throw new Error("The contract rejected the migration (MigrationNotReady). No transaction was sent.");
+    }
+    throw error;
+  }
   return {
     status: "READY",
     action: "migrate",
